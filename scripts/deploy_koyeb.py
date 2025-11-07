@@ -310,14 +310,13 @@ def deploy(
         # 构建环境变量配置（引用 Secrets）
         env_config = []
         if secret_refs:
-            # Koyeb 使用 {{ secret.SECRET_NAME }} 格式引用 secrets
+            # 验证 Secret 是否存在，然后使用插值语法引用
             for secret_name in secret_refs:
-                # 验证 Secret 是否存在
                 secret_id = get_or_create_secret(api_key, secret_name)
                 if secret_id:
-                    # 使用 {{ secret.SECRET_NAME }} 格式引用
+                    # Koyeb API 使用插值语法 {{ secret.SECRET_NAME }} 引用 Secret
                     env_config.append({"key": secret_name, "value": f"{{{{ secret.{secret_name} }}}}"})
-                    print(f"✓ 配置环境变量 {secret_name} 引用 Secret: {secret_name}")
+                    print(f"✓ 配置环境变量 {secret_name} 引用 Secret: {secret_name} (ID: {secret_id})")
                 else:
                     print(f"⚠️  警告: Secret '{secret_name}' 不存在，跳过环境变量配置")
                     print(f"   请在 Koyeb 控制台创建 Secret '{secret_name}'")
@@ -372,6 +371,14 @@ def deploy(
             # 添加环境变量配置（引用 Secrets）
             if env_config:
                 service_payload["definition"]["env"] = env_config
+                print(f"📋 环境变量配置:")
+                for env_var in env_config:
+                    value = env_var.get('value', '')
+                    # 检查是否是 Secret 引用（包含 {{ secret.xxx }}）
+                    if '{{ secret.' in value:
+                        print(f"   {env_var['key']} = {value} (Secret 引用)")
+                    else:
+                        print(f"   {env_var['key']} = {value}")
             # 保存请求 payload 以便错误时显示
             last_request_payload = service_payload
             create_service_resp = httpx.post(
@@ -425,6 +432,14 @@ def deploy(
             # 添加环境变量配置（引用 Secrets）
             if env_config:
                 update_payload["definition"]["env"] = env_config
+                print(f"📋 环境变量配置:")
+                for env_var in env_config:
+                    value = env_var.get('value', '')
+                    # 检查是否是 Secret 引用（包含 {{ secret.xxx }}）
+                    if '{{ secret.' in value:
+                        print(f"   {env_var['key']} = {value} (Secret 引用)")
+                    else:
+                        print(f"   {env_var['key']} = {value}")
             update_service_resp = httpx.patch(
                 f"{KOYEB_API_BASE}/services/{service_id}",
                 headers=headers,

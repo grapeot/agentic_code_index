@@ -403,7 +403,10 @@ python scripts/deploy_koyeb.py --list
 - **设置环境变量**：
   - `BASE_PATH=/${SERVICE_NAME}`：运行时环境变量，用于后端处理子路径
   - `SERVICE_NAME=${SERVICE_NAME}`：构建时环境变量，用于 Vite 构建时设置 base path（如果未硬编码）
-- 设置 Secrets（如 `OPENAI_API_KEY`）
+- **配置 Secrets 引用**：
+  - 使用 Koyeb 插值语法 `{{ secret.SECRET_NAME }}` 引用 Secrets
+  - 例如：`OPENAI_API_KEY={{ secret.OPENAI_API_KEY }}`
+  - 脚本会自动验证 Secret 是否存在，不存在时会跳过并提示
 - 使用 nano 实例类型和 na 区域（可配置）
 - **自动配置路由**：`/${SERVICE_NAME}` -> `PORT`
 
@@ -453,8 +456,11 @@ python scripts/deploy_koyeb.py \
 - **自动路由配置**：脚本会自动创建路由 `/${SERVICE_NAME}` -> `PORT`
   - 例如：如果 `SERVICE_NAME=my-service`，端口是 `8001`
   - 会自动配置路由 `/my-service` -> `8001`
-- 脚本默认会自动引用 `OPENAI_API_KEY` Secret（如果存在）
-- 如果需要引用其他 Secrets，使用 `--secret-ref` 参数
+- **Secret 配置**：
+  - 脚本默认会自动引用 `OPENAI_API_KEY` Secret（如果存在）
+  - 如果需要引用其他 Secrets，使用 `--secret-ref` 参数
+  - Secrets 使用 Koyeb 插值语法 `{{ secret.SECRET_NAME }}` 格式引用
+  - 脚本会在部署前验证 Secret 是否存在，不存在时会跳过并提示在 Koyeb 控制台创建
 - 使用 `--list` 选项可以查看所有应用和服务，不需要设置 `SERVICE_NAME`
 
 ## 本地测试步骤
