@@ -39,6 +39,10 @@ env/
 *.faiss.index
 *.json
 !requirements.txt
+!package.json
+!package-lock.json
+!frontend/package.json
+!frontend/package-lock.json
 design.html
 
 # Logs
