@@ -84,6 +84,34 @@ async def health():
     return {"status": "healthy"}
 
 
+@app.get("/file")
+async def get_file(file_path: str):
+    """Get file content."""
+    from tools import cat_file
+    
+    result = cat_file(file_path)
+    
+    if result["success"]:
+        return {"content": result["content"]}
+    else:
+        raise HTTPException(status_code=404, detail=result.get("error", "File not found"))
+
+
+@app.get("/files")
+async def list_files():
+    """List all indexed files."""
+    global searcher
+    if searcher is None or searcher.metadata is None:
+        return {"files": []}
+    
+    files = set()
+    for chunk in searcher.metadata.get("chunks", []):
+        if chunk.get("type") == "file":
+            files.add(chunk.get("file_path"))
+    
+    return {"files": sorted(list(files))}
+
+
 @app.post("/index", response_model=IndexResponse)
 async def index_codebase(request: IndexRequest):
     """Index a codebase."""
