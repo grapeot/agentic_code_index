@@ -136,6 +136,7 @@ def deploy(
     print(f"  服务名: {service_name}")
     print(f"  分支: {branch}")
     print(f"  端口: {port}")
+    print(f"  构建方式: Docker (Dockerfile)")
     print(f"  路由配置: {json.dumps(routes_config, indent=2, ensure_ascii=False)}")
     if secret_refs:
         print(f"  引用 Secrets: {', '.join(secret_refs)}")
@@ -240,6 +241,10 @@ def deploy(
                         "repository": git_repo_url,
                         "branch": branch,
                     },
+                    "build": {
+                        "type": "DOCKERFILE",
+                        "dockerfile_path": "Dockerfile"
+                    },
                     "ports": [
                         {
                             "port": port,
@@ -286,6 +291,10 @@ def deploy(
                     "git": {
                         "repository": git_repo_url,
                         "branch": branch,
+                    },
+                    "build": {
+                        "type": "DOCKERFILE",
+                        "dockerfile_path": "Dockerfile"
                     },
                     "ports": [
                         {
