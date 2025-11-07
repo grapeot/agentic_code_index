@@ -315,7 +315,14 @@ if frontend_dist.exists():
                 html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
                 html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
                 logger.info(f"   Updated HTML paths with base_path: {base_path}")
-                logger.info(f"   Sample paths: {re.findall(r'(href|src)=\"[^\"]*\"', html_content)[:3]}")
+            if base_path:
+                # Replace absolute paths with base path
+                html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
+                html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
+                logger.info(f"   Updated HTML paths with base_path: {base_path}")
+                # Extract sample paths for logging (avoid backslash in f-string)
+                sample_paths = re.findall(r'(href|src)="[^"]*"', html_content)[:3]
+                logger.info(f"   Sample paths: {sample_paths}")
             
             logger.info("✅ Serving index.html")
             return HTMLResponse(content=html_content)
@@ -382,7 +389,14 @@ if frontend_dist.exists():
                 html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
                 html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
                 logger.info(f"   Updated HTML paths with base_path: {base_path}")
-                logger.info(f"   Sample paths: {re.findall(r'(href|src)=\"[^\"]*\"', html_content)[:3]}")
+            if base_path:
+                # Replace absolute paths with base path
+                html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
+                html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
+                logger.info(f"   Updated HTML paths with base_path: {base_path}")
+                # Extract sample paths for logging (avoid backslash in f-string)
+                sample_paths = re.findall(r'(href|src)="[^"]*"', html_content)[:3]
+                logger.info(f"   Sample paths: {sample_paths}")
             
             logger.info(f"✅ Serving index.html (SPA fallback) for path: {path}")
             return HTMLResponse(content=html_content)
