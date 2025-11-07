@@ -1,9 +1,12 @@
 """FastAPI server for the code indexing agent."""
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from contextlib import asynccontextmanager
 import os
+from pathlib import Path
 
 from src.agent import Agent
 from src.models import FinalAnswer
@@ -28,6 +31,10 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Code Indexing Agent", version="1.0.0", lifespan=lifespan)
+
+# 创建 API 路由组（用于前端 /api 前缀）
+from fastapi import APIRouter
+api_router = APIRouter()
 
 # Global searcher instance
 searcher: Optional[CodeSearcher] = None
@@ -64,28 +71,28 @@ class IndexResponse(BaseModel):
     output_dir: str
 
 
-@app.get("/")
+@api_router.get("/")
 async def root():
     """Root endpoint."""
     return {
         "message": "Code Indexing Agent",
         "version": "1.0.0",
         "endpoints": {
-            "/index": "POST - Index a codebase",
-            "/query": "POST - Query the agent with a question",
-            "/health": "GET - Health check"
+            "/api/index": "POST - Index a codebase",
+            "/api/query": "POST - Query the agent with a question",
+            "/api/health": "GET - Health check"
         },
         "index_loaded": searcher is not None
     }
 
 
-@app.get("/health")
+@api_router.get("/health")
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
 
 
-@app.get("/file")
+@api_router.get("/file")
 async def get_file(file_path: str):
     """Get file content."""
     from src.tools import cat_file
@@ -98,7 +105,7 @@ async def get_file(file_path: str):
         raise HTTPException(status_code=404, detail=result.get("error", "File not found"))
 
 
-@app.get("/files")
+@api_router.get("/files")
 async def list_files():
     """List all indexed files."""
     global searcher
@@ -113,7 +120,7 @@ async def list_files():
     return {"files": sorted(list(files))}
 
 
-@app.get("/file-tree")
+@api_router.get("/file-tree")
 async def get_file_tree(root_path: str = "."):
     """Get real filesystem directory structure."""
     import os
@@ -177,7 +184,7 @@ async def get_file_tree(root_path: str = "."):
         return {"error": str(e)}
 
 
-@app.post("/index", response_model=IndexResponse)
+@api_router.post("/index", response_model=IndexResponse)
 async def index_codebase(request: IndexRequest):
     """Index a codebase."""
     try:
@@ -194,7 +201,7 @@ async def index_codebase(request: IndexRequest):
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
 
 
-@app.post("/query", response_model=QueryResponse)
+@api_router.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
     """Query the agent with a question."""
     try:
@@ -214,7 +221,32 @@ async def query(request: QueryRequest):
         raise HTTPException(status_code=500, detail=f"Agent query failed: {str(e)}")
 
 
+# 注册 API 路由（支持 /api 前缀和直接访问）
+app.include_router(api_router, prefix="/api", tags=["api"])
+app.include_router(api_router, tags=["api"])  # 也支持直接访问（向后兼容）
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
+
+# Serve frontend static files if they exist (must be after all API routes)
+frontend_dist = Path("frontend/dist")
+if frontend_dist.exists():
+    app.mount("/static", StaticFiles(directory=str(frontend_dist / "assets")), name="static")
+    
+    @app.get("/{path:path}")
+    async def serve_frontend(path: str):
+        """Serve frontend files, fallback to index.html for SPA routing."""
+        # Skip API routes
+        if path.startswith(("api/", "index", "query", "file", "files", "file-tree", "health", "docs", "openapi.json")):
+            raise HTTPException(status_code=404)
+        file_path = frontend_dist / path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        # For SPA routing, return index.html
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404)
 

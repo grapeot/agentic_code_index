@@ -51,7 +51,31 @@ export OPENAI_API_KEY="your-api-key-here"
 
 ## 运行服务
 
-### 后端服务
+### 一键启动（推荐）
+
+使用启动脚本一键启动完整应用（包含前端构建和后端服务）：
+
+```bash
+./scripts/launch.sh
+```
+
+这个脚本会自动：
+1. 创建并激活 Python 虚拟环境（如果不存在）
+2. 安装 Python 依赖
+3. 安装前端依赖（如果不存在）
+4. 构建前端静态文件
+5. 启动 FastAPI 服务器
+
+启动后访问：
+- **前端界面**: http://localhost:8001/
+- **API 文档**: http://localhost:8001/docs
+- **健康检查**: http://localhost:8001/api/health
+
+### 手动启动（开发模式）
+
+如果需要分别启动前后端进行开发：
+
+#### 后端服务
 
 ```bash
 # 激活虚拟环境
@@ -61,15 +85,7 @@ source .venv/bin/activate
 python -m uvicorn main:app --port 8001 --reload
 ```
 
-或者使用启动脚本：
-
-```bash
-./launch_backend.sh
-```
-
-服务将在 `http://localhost:8001` 启动。
-
-### 前端界面
+#### 前端开发服务器
 
 ```bash
 cd frontend
@@ -77,7 +93,18 @@ npm install
 npm run dev
 ```
 
-前端将在 `http://localhost:5173` 启动。
+前端开发服务器将在 `http://localhost:3000` 启动（通过 Vite 代理连接到后端 API）。
+
+### 生产部署
+
+在生产环境中，前端会被构建为静态文件，由 FastAPI 统一服务。部署到 Koyeb 时，Dockerfile 会自动处理前端构建。
+
+**部署到 Koyeb**:
+```bash
+python deploy_koyeb.py --force-api
+```
+
+**注意**: 确保在 Koyeb 控制台中已创建 `OPENAI_API_KEY` Secret，部署脚本会自动引用它。
 
 ## API 使用
 
@@ -135,11 +162,15 @@ curl -X POST http://localhost:8001/query \
 
 ### 3. 其他端点
 
-- `GET /` - 获取服务信息和可用端点
-- `GET /health` - 健康检查
-- `GET /files` - 列出所有已索引的文件
-- `GET /file?file_path=xxx` - 获取指定文件的内容
-- `GET /file-tree` - 获取文件系统目录结构
+- `GET /api/` - 获取服务信息和可用端点
+- `GET /api/health` - 健康检查
+- `GET /api/files` - 列出所有已索引的文件
+- `GET /api/file?file_path=xxx` - 获取指定文件的内容
+- `GET /api/file-tree` - 获取文件系统目录结构
+
+**注意**: API 端点支持两种访问方式：
+- 带 `/api` 前缀：`/api/query`（推荐，前端使用）
+- 直接访问：`/query`（向后兼容）
 
 ## 使用示例
 
@@ -232,7 +263,11 @@ python tests/test_comprehensive.py
 │   ├── design.md        # 设计文档
 │   └── screenshot.mp4   # 演示视频
 ├── requirements.txt     # Python 依赖列表
-├── launch_backend.sh    # 后端启动脚本
+├── Dockerfile           # Docker 构建文件（用于生产部署）
+├── deploy_koyeb.py      # Koyeb 部署脚本
+├── scripts/             # 脚本目录
+│   ├── launch.sh        # 一键启动脚本（推荐）
+│   └── update_self_index.py  # 更新自索引脚本
 └── README.md            # 本文件
 ```
 
@@ -261,6 +296,26 @@ python tests/test_comprehensive.py
 - **后端**: Python, FastAPI, OpenAI API, FAISS, Pydantic
 - **前端**: React, Vite
 - **AI 模型**: OpenAI GPT-5-mini (推理), text-embedding-3-small (向量化)
+- **部署**: Docker, Koyeb
+
+## 架构说明
+
+### 前后端集成
+
+本项目采用**前后端一体化部署**方案：
+- 前端通过 Vite 构建为静态文件（`frontend/dist`）
+- FastAPI 同时服务 API 请求和静态文件
+- 生产环境中，所有请求通过同一个服务处理（端口 8001）
+
+**优势**:
+- 部署简单，只需一个服务
+- 无需配置 CORS
+- 适合中小型应用
+
+**API 路由**:
+- 前端通过 `/api/*` 访问后端 API
+- 静态文件通过根路径 `/` 访问
+- FastAPI 自动处理 SPA 路由回退
 
 ## 许可证
 

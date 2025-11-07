@@ -12,6 +12,11 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, '')
       }
     }
+  },
+  build: {
+    outDir: 'dist',
+    // 生产环境使用相对路径，这样前端可以直接调用后端 API
+    base: './'
   }
 })
 
