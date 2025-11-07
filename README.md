@@ -99,12 +99,40 @@ npm run dev
 
 在生产环境中，前端会被构建为静态文件，由 FastAPI 统一服务。部署到 Koyeb 时，Dockerfile 会自动处理前端构建。
 
-**部署到 Koyeb**:
+#### 部署到 Koyeb
+
+**前置要求**：
+1. 在 Koyeb 控制台创建 API Key，设置到环境变量：
+   ```bash
+   export KOYEB_API_KEY=your-koyeb-api-key
+   ```
+   或添加到 `.env` 文件
+
+2. 在 Koyeb 控制台创建 `OPENAI_API_KEY` Secret（部署脚本会自动引用）
+
+**部署步骤**：
+
 ```bash
+# 基本部署（使用默认配置）
 python deploy_koyeb.py --force-api
+
+# 自定义配置
+python deploy_koyeb.py \
+  --app-name my-app \
+  --branch main \
+  --port 8001 \
+  --force-api
 ```
 
-**注意**: 确保在 Koyeb 控制台中已创建 `OPENAI_API_KEY` Secret，部署脚本会自动引用它。
+**参数说明**：
+- `--repo`: GitHub 仓库 URL（默认：当前项目）
+- `--app-name`: Koyeb 应用名称（默认：`agentic-code-index`）
+- `--branch`: Git 分支（默认：`master`）
+- `--port`: 应用端口（默认：`8001`）
+- `--force-api`: 强制使用 REST API
+- `--secret-ref`: 引用额外的 Koyeb Secret（可多次使用）
+
+**详细部署指南**：请参考 [Koyeb 部署文档](docs/koyeb-deployment.md)
 
 ## API 使用
 
