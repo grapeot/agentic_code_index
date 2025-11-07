@@ -79,7 +79,9 @@ your-project/
 
 ### 1. 前端配置
 
-#### Vite 项目配置 (`vite.config.js`)
+#### Vite 项目配置 (`frontend/vite.config.js`)
+
+创建或修改 `frontend/vite.config.js`：
 
 ```javascript
 import { defineConfig } from 'vite'
@@ -108,9 +110,10 @@ function loadEnvFromRoot() {
   }
 }
 
-// 从 .env 文件中的 SERVICE_NAME 计算基础路径
-const rootEnv = loadEnvFromRoot()
-const serviceName = rootEnv.SERVICE_NAME || ''
+// 从环境变量或 .env 文件中的 SERVICE_NAME 计算基础路径
+// 优先级：构建时环境变量 > .env 文件
+// Docker 构建时会通过环境变量传递 SERVICE_NAME
+const serviceName = process.env.SERVICE_NAME || loadEnvFromRoot().SERVICE_NAME || ''
 const basePath = serviceName ? `/${serviceName}` : ''
 
 export default defineConfig({
@@ -127,16 +130,18 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    // 从 .env 文件中的 SERVICE_NAME 计算基础路径
+    // 从 SERVICE_NAME 计算基础路径
+    // 根路径部署：base = './'
+    // 子路径部署：base = '/service-name/'
     base: basePath ? `${basePath}/` : './'
   }
 })
 ```
 
 **基础路径配置说明：**
-- **根路径部署**：如果 `.env` 文件中未设置 `SERVICE_NAME`，使用相对路径 `./`，适用于部署在根路径的应用
-- **子路径部署**：在 `.env` 文件中设置 `SERVICE_NAME=your-service-name`，会自动计算基础路径为 `/your-service-name/`，适用于部署在子路径的应用（如 Koyeb 的 `/<service-name>` 路由）
-- **统一配置**：前端和后端都从同一个 `.env` 文件读取 `SERVICE_NAME`，确保配置一致
+- **根路径部署**：如果未设置 `SERVICE_NAME`，使用相对路径 `./`，适用于部署在根路径的应用
+- **子路径部署**：设置 `SERVICE_NAME=your-service-name`，会自动计算基础路径为 `/your-service-name/`
+- **优先级**：构建时环境变量 > `.env` 文件（Docker 构建时 `.env` 文件不可用，所以通过环境变量传递）
 - **服务名称要求**：`SERVICE_NAME` 必须是规范化的名称（小写字母、数字、连字符，不能以下划线开头或结尾）
 
 #### Create React App 配置
@@ -222,17 +227,61 @@ if frontend_dist.exists():
 
 ### 3. 前端代码修改
 
-#### API 调用统一使用 `/api` 前缀
+#### 创建 API 工具函数 (`frontend/src/utils/api.js`)
+
+**重要**：在子路径部署时，API 请求必须包含 base path。创建工具函数统一处理：
 
 ```javascript
-// 开发环境：Vite proxy 会转发到后端
-// 生产环境：直接调用同域名的 /api 端点
-const response = await fetch('/api/your-endpoint', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(data)
-});
+// frontend/src/utils/api.js
+// API utility for making requests that work with base path
+// When deployed at /service-name, API calls should go to /service-name/api/...
+
+// Get base path from Vite's import.meta.env.BASE_URL
+// BASE_URL is set by Vite based on the base config (e.g., '/service-name/')
+const BASE_URL = import.meta.env.BASE_URL || '/'
+
+// Helper function to build API URL
+export function apiUrl(path) {
+  // Remove leading slash if present
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path
+  // Ensure path starts with 'api/'
+  const apiPath = cleanPath.startsWith('api/') ? cleanPath : `api/${cleanPath}`
+  // Combine base URL with API path
+  // BASE_URL already ends with '/', so we don't need to add another one
+  return `${BASE_URL}${apiPath}`
+}
+
+// Wrapper for fetch that uses apiUrl
+export async function apiFetch(path, options) {
+  return fetch(apiUrl(path), options)
+}
 ```
+
+#### 在组件中使用 API 工具函数
+
+**不要直接使用 `/api/...`，而是使用工具函数：**
+
+```javascript
+// ❌ 错误：硬编码路径，子路径部署时会失败
+const response = await fetch('/api/your-endpoint')
+
+// ✅ 正确：使用工具函数
+import { apiFetch, apiUrl } from '../utils/api'
+
+// 使用 fetch
+const response = await apiFetch('your-endpoint')
+
+// 使用 axios
+import axios from 'axios'
+const response = await axios.get(apiUrl('your-endpoint'))
+```
+
+**为什么需要工具函数？**
+
+- **子路径部署**：当应用部署在 `/service-name` 时，API 请求必须是 `/service-name/api/...` 而不是 `/api/...`
+- **自动处理**：工具函数使用 Vite 的 `import.meta.env.BASE_URL` 自动处理 base path
+- **开发环境**：开发时 `BASE_URL = '/'`，工具函数正常工作
+- **生产环境**：生产时 `BASE_URL = '/service-name/'`，自动添加 base path
 
 **为什么使用 `/api` 前缀？**
 
@@ -243,16 +292,22 @@ const response = await fetch('/api/your-endpoint', {
 
 ### 4. Dockerfile 配置
 
+创建 `Dockerfile`：
+
 ```dockerfile
 # 多阶段构建：先构建前端
 FROM node:18-slim AS frontend-builder
+
+# 接受构建参数：SERVICE_NAME（用于计算 base path）
+# 这个参数会在构建时通过环境变量传递（Koyeb 会自动传递）
+ARG SERVICE_NAME
 
 WORKDIR /app/frontend
 
 # 复制前端 package.json（如果存在）
 COPY frontend/package*.json ./
 
-# 安装依赖（npm install 默认会安装所有依赖包括 devDependencies）
+# 安装依赖
 RUN if [ -f package.json ]; then \
       npm install; \
     else \
@@ -262,9 +317,12 @@ RUN if [ -f package.json ]; then \
 # 复制前端文件
 COPY frontend/ .
 
-# 构建前端（如果 package.json 存在）
+# 构建前端
+# SERVICE_NAME 通过 ARG 传递，用于设置 Vite 的 base path
 RUN if [ -f package.json ]; then \
-      npm run build; \
+      echo "Building frontend with SERVICE_NAME=${SERVICE_NAME:-}" && \
+      SERVICE_NAME=${SERVICE_NAME:-} npm run build && \
+      echo "Build completed"; \
     else \
       echo "No package.json found, skipping build"; \
       mkdir -p dist && echo "<html><body>Frontend not built</body></html>" > dist/index.html; \
@@ -289,6 +347,11 @@ ENV PORT=8001
 
 CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"
 ```
+
+**关键点：**
+- `ARG SERVICE_NAME`：声明构建参数，用于传递服务名称
+- `SERVICE_NAME=${SERVICE_NAME:-} npm run build`：在构建时传递环境变量给 npm
+- Vite 会读取 `SERVICE_NAME` 环境变量，自动设置 base path
 
 **为什么使用多阶段构建？**
 
@@ -426,16 +489,23 @@ python scripts/deploy_koyeb.py --list
 - 创建或更新 Koyeb 应用和服务（app 名称硬编码为 `ai-builders`）
 - 配置 Git 仓库连接（格式：`github.com/<org>/<repo>`）
 - **自动配置 Docker 构建**：在 `git` 对象内添加 `docker` 字段，使用 Dockerfile
-- **自动配置子路径部署**：计算前端基础路径 `BASE_PATH=/${SERVICE_NAME}` 并设置为环境变量
-- 设置环境变量和 Secrets（包括 `BASE_PATH` 环境变量）
+- **设置环境变量**：
+  - `BASE_PATH=/${SERVICE_NAME}`：运行时环境变量，用于后端处理子路径
+  - `SERVICE_NAME=${SERVICE_NAME}`：构建时环境变量，用于 Vite 构建时设置 base path
+- 设置 Secrets（如 `OPENAI_API_KEY`）
 - 使用 nano 实例类型和 na 区域（可配置）
 - **自动配置路由**：`/${SERVICE_NAME}` -> `PORT`
 
-**子路径部署说明：**
-- Koyeb 默认将服务部署在 `/${SERVICE_NAME}` 路径下
-- 部署脚本会自动计算 `BASE_PATH=/${SERVICE_NAME}` 并设置为环境变量
-- Vite 构建时会从 `.env` 文件读取 `SERVICE_NAME`，自动计算基础路径
-- 前端和后端配置统一，都从同一个 `.env` 文件读取
+**子路径部署流程：**
+1. 部署脚本从 `.env` 读取 `SERVICE_NAME`（例如：`code-index`）
+2. 设置环境变量 `SERVICE_NAME=code-index` 和 `BASE_PATH=/code-index`
+3. Koyeb 构建 Docker 镜像时，`SERVICE_NAME` 环境变量传递给 Dockerfile
+4. Dockerfile 的 `ARG SERVICE_NAME` 接收环境变量
+5. 构建前端时，`SERVICE_NAME` 传递给 npm，Vite 读取并设置 `base: '/code-index/'`
+6. Vite 构建时，`import.meta.env.BASE_URL` 被设置为 `/code-index/`
+7. 前端代码使用 `apiUrl()` 函数，自动添加 base path：`/code-index/api/...`
+8. Koyeb 路由配置：`/code-index` -> `PORT`
+9. 后端运行时读取 `BASE_PATH` 环境变量，处理子路径请求
 
 ### 部署脚本参数
 
