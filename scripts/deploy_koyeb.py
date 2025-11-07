@@ -116,14 +116,27 @@ def deploy(
     branch: str = "master",
     port: int = 8001,
     secret_refs: list[str] | None = None,
+    routes: list[dict] | None = None,
 ) -> bool:
     """使用 Koyeb REST API 部署"""
+    # 构建路由配置（如果没有提供，则使用默认路由：/<service_name> -> port）
+    routes_config = routes
+    if routes_config is None:
+        # 默认路由：/<service_name> -> port
+        routes_config = [
+            {
+                "port": port,
+                "path": f"/{service_name}"
+            }
+        ]
+    
     print(f"部署配置:")
     print(f"  仓库: {repo}")
     print(f"  应用名: {app_name}")
     print(f"  服务名: {service_name}")
     print(f"  分支: {branch}")
     print(f"  端口: {port}")
+    print(f"  路由配置: {json.dumps(routes_config, indent=2, ensure_ascii=False)}")
     if secret_refs:
         print(f"  引用 Secrets: {', '.join(secret_refs)}")
     print()
@@ -205,6 +218,17 @@ def deploy(
             for secret_name in secret_refs:
                 env_config.append({"key": secret_name, "value": f"@{secret_name}"})
 
+        # 构建路由配置（如果没有提供，则使用默认路由：/<service_name> -> port）
+        routes_config = routes
+        if routes_config is None:
+            # 默认路由：/<service_name> -> port
+            routes_config = [
+                {
+                    "port": port,
+                    "path": f"/{service_name}"
+                }
+            ]
+
         if not service_id:
             print(f"创建服务: {service_name}...")
             service_payload = {
@@ -234,6 +258,7 @@ def deploy(
                             "max": 1
                         }
                     ],
+                    "routes": routes_config,
                 },
             }
             # 添加环境变量配置（引用 Secrets）
@@ -280,6 +305,7 @@ def deploy(
                             "max": 1
                         }
                     ],
+                    "routes": routes_config,
                 },
             }
             # 添加环境变量配置（引用 Secrets）
@@ -429,12 +455,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--app-name",
         default="ai-builders",
-        help="Koyeb 应用名称 (默认: ai-builders)",
+        help="Koyeb 应用名称 (默认: ai-builders，已硬编码)",
     )
     parser.add_argument(
         "--service-name",
-        default="agentic-code-index-service",
-        help="Koyeb 服务名称 (默认: agentic-code-index-service)",
+        required=False,
+        help="Koyeb 服务名称 (部署时必需，使用 --list 时不需要)",
     )
     parser.add_argument(
         "--branch",
@@ -474,8 +500,30 @@ def main(argv: list[str] | None = None) -> int:
         success = list_services(api_key, None)  # 显示所有应用
         return 0 if success else 1
 
-    # 设置服务名称（如果未指定则使用默认值）
-    service_name = args.service_name if args.service_name is not None else "agentic-code-index-service"
+    # 硬编码 app 名称为 ai-builders
+    app_name = "ai-builders"
+    
+    # 服务名称必须提供（除非使用 --list）
+    if not args.service_name:
+        print("错误: --service-name 是必需的（除非使用 --list）")
+        return 1
+    
+    # 验证并规范化服务名称：Koyeb 服务名称只能包含小写字母、数字和连字符，不能以下划线开头或结尾
+    service_name = args.service_name
+    # 将下划线替换为连字符，并移除无效字符
+    service_name = service_name.replace("_", "-").lower()
+    # 移除开头和结尾的连字符
+    service_name = service_name.strip("-")
+    # 确保只包含小写字母、数字和连字符
+    import re
+    service_name = re.sub(r'[^a-z0-9-]', '', service_name)
+    
+    if service_name != args.service_name:
+        print(f"⚠️  服务名称已规范化: {args.service_name} -> {service_name}")
+    
+    if not service_name:
+        print("错误: 服务名称无效")
+        return 1
 
     # 解析 Secret 引用，默认包含 OPENAI_API_KEY
     secret_refs = args.secret_ref or []
@@ -486,7 +534,7 @@ def main(argv: list[str] | None = None) -> int:
     success = deploy(
         api_key=api_key,
         repo=args.repo,
-        app_name=args.app_name,
+        app_name=app_name,
         service_name=service_name,
         branch=args.branch,
         port=args.port,
