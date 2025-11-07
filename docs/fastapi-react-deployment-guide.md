@@ -370,6 +370,8 @@ KOYEB_API_KEY=your_koyeb_api_key
 SERVICE_NAME=test-service
 
 # OpenAI API Key（可选，如果使用 Koyeb Secrets 则不需要在这里设置）
+# 注意：如果使用 Koyeb Secrets，必须在 Koyeb 控制台创建 Secret（https://app.koyeb.com/secrets）
+# 部署脚本会验证 Secret 是否存在，不存在会导致部署失败
 OPENAI_API_KEY=your_openai_api_key
 ```
 
@@ -380,6 +382,7 @@ OPENAI_API_KEY=your_openai_api_key
   - 路由配置：`/<service-name>` -> `PORT`
   - 前端基础路径：`/${SERVICE_NAME}`
 - 其他环境变量：通过 Koyeb Secrets 配置（如 API keys、数据库连接等）
+- **重要**：所有在部署脚本中引用的 Secrets 必须在 Koyeb 控制台创建（访问 https://app.koyeb.com/secrets），否则部署会失败
 
 ### 部署脚本（可选）
 
@@ -406,7 +409,7 @@ python scripts/deploy_koyeb.py --list
 - **配置 Secrets 引用**：
   - 使用 Koyeb 插值语法 `{{ secret.SECRET_NAME }}` 引用 Secrets
   - 例如：`OPENAI_API_KEY={{ secret.OPENAI_API_KEY }}`
-  - 脚本会自动验证 Secret 是否存在，不存在时会跳过并提示
+  - 脚本会在部署前验证 Secret 是否存在，**如果 Secret 不存在，部署会失败并提示创建**
 - 使用 nano 实例类型和 na 区域（可配置）
 - **自动配置路由**：`/${SERVICE_NAME}` -> `PORT`
 
@@ -457,10 +460,11 @@ python scripts/deploy_koyeb.py \
   - 例如：如果 `SERVICE_NAME=my-service`，端口是 `8001`
   - 会自动配置路由 `/my-service` -> `8001`
 - **Secret 配置**：
-  - 脚本默认会自动引用 `OPENAI_API_KEY` Secret（如果存在）
+  - 脚本默认会自动引用 `OPENAI_API_KEY` Secret（**必须存在**）
   - 如果需要引用其他 Secrets，使用 `--secret-ref` 参数
   - Secrets 使用 Koyeb 插值语法 `{{ secret.SECRET_NAME }}` 格式引用
-  - 脚本会在部署前验证 Secret 是否存在，不存在时会跳过并提示在 Koyeb 控制台创建
+  - **重要**：脚本会在部署前验证所有必需的 Secrets 是否存在，如果任何 Secret 不存在，部署会立即失败并显示错误信息，提示在 Koyeb 控制台创建缺失的 Secrets
+  - 部署前请确保所有必需的 Secrets 已在 Koyeb 控制台创建（访问 https://app.koyeb.com/secrets）
 - 使用 `--list` 选项可以查看所有应用和服务，不需要设置 `SERVICE_NAME`
 
 ## 本地测试步骤
