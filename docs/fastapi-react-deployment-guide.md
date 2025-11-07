@@ -43,28 +43,6 @@ your-project/
     └── deploy_koyeb.py     # Koyeb 部署脚本（可选，仅用于 Koyeb）
 ```
 
-### 适配不同项目结构
-
-如果你的项目结构不同，需要相应调整：
-
-1. **前端目录名不同**（例如 `client/`、`web/`、`ui/`）：
-   - 修改 `main.py` 中的 `frontend_dist = Path("frontend/dist")` 为你的目录名
-   - 修改 `Dockerfile` 中的 `COPY frontend/` 路径
-   - 修改 `vite.config.js` 的路径（如果配置文件位置不同）
-
-2. **前端在根目录**（不是子目录）：
-   - 修改 `main.py` 中的路径为 `Path("dist")`
-   - 修改 `Dockerfile`，移除 `frontend/` 前缀
-   - 调整构建脚本路径
-
-3. **后端入口文件不同**（例如 `app.py`、`server.py`）：
-   - 修改 `Procfile` 中的 `main:app` 为 `your-file:app`
-   - 修改 `Dockerfile` CMD 中的模块名
-
-4. **构建输出目录不同**（例如 `build/`、`public/`）：
-   - 修改 `main.py` 中的 `dist` 为你的输出目录名
-   - 修改 `Dockerfile` 中的复制路径
-
 ## 需要修改/创建的文件
 
 1. `frontend/vite.config.js` - 配置构建输出和开发代理
@@ -223,12 +201,7 @@ if frontend_dist.exists():
         raise HTTPException(status_code=404)
 ```
 
-**为什么需要这样的路由顺序？**
-
-1. **API 路由先注册**：确保 `/api/*` 路径优先匹配 API 端点
-2. **静态文件后注册**：避免静态文件路径覆盖 API 路由
-3. **根路径单独处理**：`/` 路径必须明确返回 `index.html`，不能依赖通配符
-4. **SPA 路由回退**：所有未匹配的路径都返回 `index.html`，让前端路由处理
+**注意**：API 路由必须先注册，静态文件服务后注册，确保路由优先级正确。
 
 ### 3. 前端代码修改
 
@@ -283,19 +256,7 @@ import axios from 'axios'
 const response = await axios.get(apiUrl('your-endpoint'))
 ```
 
-**为什么需要工具函数？**
-
-- **子路径部署**：当应用部署在 `/service-name` 时，API 请求必须是 `/service-name/api/...` 而不是 `/api/...`
-- **自动处理**：工具函数使用 Vite 的 `import.meta.env.BASE_URL` 自动处理 base path
-- **开发环境**：开发时 `BASE_URL = '/'`，工具函数正常工作
-- **生产环境**：生产时 `BASE_URL = '/service-name/'`，自动添加 base path
-
-**为什么使用 `/api` 前缀？**
-
-- **开发环境**：Vite proxy 可以轻松识别并转发 `/api` 请求到后端
-- **生产环境**：前后端同源，无需 CORS 配置
-- **路由区分**：清晰区分 API 请求和前端路由
-- **避免冲突**：防止前端路由与 API 端点冲突
+**注意**：工具函数自动处理子路径部署的 base path，使用 `/api` 前缀便于开发代理和路由区分。
 
 ### 4. Dockerfile 配置
 
@@ -358,20 +319,8 @@ CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"
 **关键点：**
 - `ARG SERVICE_NAME`：声明构建参数，用于传递服务名称
 - `SERVICE_NAME=${SERVICE_NAME:-} npm run build`：在构建时传递环境变量给 npm
-- Vite 会读取 `SERVICE_NAME` 环境变量，自动设置 base path
-
-**为什么使用多阶段构建？**
-
-- **减小镜像大小**：最终镜像不包含 Node.js 和 node_modules
-- **构建隔离**：前端构建错误不会影响后端镜像
-- **缓存优化**：Docker 可以缓存各个构建阶段
-- **安全性**：生产镜像不包含构建工具
-
-**⚠️ 重要：CMD 中必须使用 `--host 0.0.0.0`**
-
-- 使用 `0.0.0.0` 绑定所有网络接口，允许从容器外部访问
-- 不要使用 `127.0.0.1` 或 `localhost`，这些只能从容器内部访问
-- 这是 Docker 部署时最常见的问题之一
+- 多阶段构建可以减小镜像大小，最终镜像不包含 Node.js
+- **⚠️ 重要**：CMD 中必须使用 `--host 0.0.0.0`，不能使用 `127.0.0.1` 或 `localhost`
 
 ### 5. Procfile 配置（用于 Koyeb 等 PaaS）
 
@@ -381,17 +330,7 @@ CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"
 web: python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}
 ```
 
-**为什么需要 Procfile？**
-
-- Koyeb、Heroku 等 PaaS 平台需要知道如何启动应用
-- 如果 Dockerfile 有 CMD，通常不需要 Procfile
-- 但有些平台优先使用 Procfile，所以最好两个都提供
-
-**⚠️ 重要：必须使用 `--host 0.0.0.0`**
-
-- 使用 `0.0.0.0` 绑定所有网络接口，允许从外部访问
-- 不要使用 `127.0.0.1` 或 `localhost`，这些只能从容器内部访问
-- 这是部署到容器或 PaaS 平台时最常见的问题之一
+**注意**：如果 Dockerfile 有 CMD，通常不需要 Procfile，但有些平台优先使用 Procfile。
 
 ### 6. .dockerignore 配置
 
@@ -412,43 +351,7 @@ __pycache__/
 docs/
 ```
 
-**为什么需要 .dockerignore？**
-
-- **减小构建上下文**：Docker 构建时只发送需要的文件
-- **加快构建速度**：减少传输时间
-- **避免覆盖**：防止本地文件覆盖容器内构建的文件
-- **安全性**：避免将敏感文件（如 `.env`）打包到镜像中
-
-### 7. 启动脚本（可选）
-
-创建 `scripts/launch.sh` 用于本地开发：
-
-```bash
-#!/bin/bash
-set -e
-
-# 1. 安装 Python 依赖
-# 根据你的虚拟环境调整（.venv、venv、或直接使用系统 Python）
-if [ -d ".venv" ]; then
-    source .venv/bin/activate
-elif [ -d "venv" ]; then
-    source venv/bin/activate
-fi
-pip install -r requirements.txt
-
-# 2. 构建前端
-# 根据你的前端目录调整路径
-cd frontend
-npm install
-npm run build
-cd ..
-
-# 3. 启动服务
-# 根据你的入口文件调整（main:app、app:app 等）
-python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-**注意**：根据你的项目结构调整脚本中的路径和命令。
+**注意**：`.dockerignore` 可以减小构建上下文，加快构建速度，避免将敏感文件打包到镜像中。
 
 ## Koyeb 部署配置
 
@@ -554,39 +457,6 @@ python scripts/deploy_koyeb.py \
 - 如果需要引用其他 Secrets，使用 `--secret-ref` 参数
 - 使用 `--list` 选项可以查看所有应用和服务，不需要设置 `SERVICE_NAME`
 
-### Koyeb API 配置要点
-
-根据 [Koyeb API 文档](https://api.prod.koyeb.com/public.swagger.json)：
-
-1. **Git 仓库格式**：必须使用 `github.com/<org>/<repo>` 格式，不是完整 URL
-2. **Docker 构建配置**：要使用 Dockerfile 而不是 buildpack，需要在 `git` 对象内添加 `docker` 字段：
-   ```json
-   "git": {
-     "repository": "github.com/your-org/your-repo",
-     "branch": "master",
-     "docker": {
-       "dockerfile": "Dockerfile"
-     }
-   }
-   ```
-   - ⚠️ **重要**：`docker` 字段必须在 `git` 对象内，不是独立的 `build` 字段
-   - `dockerfile` 属性指定 Dockerfile 的路径（相对于仓库根目录）
-   - 如果不指定 `docker` 字段，Koyeb 会尝试使用 buildpack 自动检测
-   - 部署脚本会自动配置 Docker 构建
-3. **服务定义结构**：
-   - `scalings` 必须是数组：`[{"min": 1, "max": 1}]`
-   - `instance_types` 必须是数组：`[{"type": "nano"}]`
-   - `CreateService` 只需要 `app_id` 和 `definition`，不需要顶层 `name`
-4. **运行命令**：通过 Procfile 或 Dockerfile CMD 定义
-5. **路由配置**：可以使用 `routes` 字段配置路径到端口的映射
-   - 格式：`[{"port": 8001, "path": "/your-path"}]`
-   - 部署脚本会自动配置 `/<service-name>` -> `PORT` 的路由
-6. **服务名称格式**：只能包含小写字母、数字和连字符（hyphen）
-   - 不能包含下划线（underscore）
-   - 不能以连字符开头或结尾
-   - 部署脚本会检查服务名称是否规范化，未规范化则停止部署
-   - 服务名称必须在 `.env` 文件中设置，不能通过命令行参数指定
-
 ## 本地测试步骤
 
 在部署到生产环境之前，强烈建议先在本地测试完整流程：
@@ -650,21 +520,6 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 4. **SPA 路由**（如果使用 React Router）
    - [ ] 直接访问 `/some-route` 能正确显示页面
    - [ ] 刷新页面不会返回 404
-
-### 步骤 5: 测试 Docker 构建（可选）
-
-```bash
-# 构建镜像
-docker build -t your-app-name .
-
-# 运行容器（根据你的应用需要设置环境变量）
-docker run -p 8001:8001 \
-  -e PORT=8001 \
-  -e YOUR_API_KEY=your-key \
-  your-app-name
-
-# 访问 http://localhost:8001 验证
-```
 
 ## 常见问题排查
 
@@ -752,77 +607,16 @@ docker run -p 8001:8001 \
 2. 该函数应该检查文件是否存在，不存在则返回 `index.html`
 3. 确保该路由在所有 API 路由之后注册
 
-### 问题 7: Koyeb 部署失败 - "no command to run"
+### 问题 7: 应用无法从外部访问（容器/部署环境）
 
-**症状**：Koyeb 部署时提示没有运行命令
-
-**原因**：缺少 Procfile 或 Dockerfile CMD
-
-**解决方法**：
-1. 创建 `Procfile` 文件，包含运行命令
-2. 确保 Dockerfile 有 `CMD` 指令
-3. 将 Procfile 提交到 Git 仓库
-4. 重新部署服务
-
-### 问题 8: Koyeb API 错误 - "error_processing_request"
-
-**症状**：使用部署脚本时返回通用错误
-
-**原因**：API payload 格式不正确
-
-**解决方法**：
-1. 检查 Git 仓库格式：必须是 `github.com/<org>/<repo>`
-2. 检查 `scalings` 格式：必须是数组 `[{...}]`，不是对象 `{...}`
-3. 检查 `instance_types` 格式：必须是数组
-4. 查看详细的错误信息（脚本会显示请求和响应）
-
-### 问题 9: 应用无法从外部访问（容器/部署环境）
-
-**症状**：应用在容器或部署环境中运行，但无法从外部访问，返回 "Connection refused" 或超时
+**症状**：应用在容器或部署环境中运行，但无法从外部访问
 
 **原因**：应用绑定到了 `127.0.0.1` 或 `localhost`，而不是 `0.0.0.0`
 
-**为什么会出现这个问题？**
-- `127.0.0.1` 和 `localhost` 只绑定到本地回环接口，只能从容器内部访问
-- 在 Docker 容器、Koyeb、Heroku 等部署环境中，外部请求需要通过容器的网络接口
-- 必须使用 `0.0.0.0` 绑定所有网络接口，才能从外部访问
-
-**解决方法**：
-1. **检查启动命令**：确保所有启动命令都使用 `--host 0.0.0.0`：
-   ```bash
-   # ✅ 正确
-   python -m uvicorn main:app --host 0.0.0.0 --port 8001
-   
-   # ❌ 错误（容器/部署环境）
-   python -m uvicorn main:app --host 127.0.0.1 --port 8001
-   python -m uvicorn main:app --host localhost --port 8001
-   ```
-
-2. **检查 Procfile**：确保使用 `0.0.0.0`：
-   ```
-   web: python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}
-   ```
-
-3. **检查 Dockerfile CMD**：确保使用 `0.0.0.0`：
-   ```dockerfile
-   CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"
-   ```
-
-4. **检查 main.py**（如果使用 `uvicorn.run`）：
-   ```python
-   # ✅ 正确
-   uvicorn.run(app, host="0.0.0.0", port=8001)
-   
-   # ❌ 错误
-   uvicorn.run(app, host="127.0.0.1", port=8001)
-   ```
-
-5. **本地开发环境**：本地开发时可以使用 `127.0.0.1` 或 `localhost`，但建议统一使用 `0.0.0.0` 以避免部署时的混淆
-
-**验证方法**：
-- 在容器内运行：`curl http://0.0.0.0:8001/api/health` 应该成功
-- 从外部访问：`curl http://<container-ip>:8001/api/health` 应该成功
-- 如果绑定到 `127.0.0.1`，外部访问会失败
+**解决方法**：确保所有启动命令都使用 `--host 0.0.0.0`：
+- Procfile: `web: python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}`
+- Dockerfile CMD: `CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"`
+- main.py: `uvicorn.run(app, host="0.0.0.0", port=8001)`
 
 ## 关键要点
 
@@ -916,55 +710,23 @@ docker run -p 8001:8001 \
 - [ ] Koyeb 部署脚本配置正确（如使用 Koyeb）
 - [ ] 所有路径配置与你的项目结构匹配
 
-## 期望结果
+## 期望结果和优势
 
 配置完成后，应该实现：
-
 - ✅ 运行 `npm run build` 后，前端构建到 `frontend/dist`
-- ✅ FastAPI 自动服务 `frontend/dist` 中的静态文件
-- ✅ 访问 `/` 显示前端页面，访问 `/api/*` 调用后端 API
+- ✅ FastAPI 自动服务静态文件，访问 `/` 显示前端页面，访问 `/api/*` 调用后端 API
 - ✅ Docker 构建时自动构建前端并包含在镜像中
-- ✅ Koyeb 部署时自动检测并运行应用
-- ✅ 开发环境使用 Vite proxy，无需 CORS
-- ✅ 生产环境前后端同源，性能足够
+- ✅ 开发环境使用 Vite proxy，生产环境前后端同源，无需 CORS 配置
+- ✅ 部署简单：只需一个服务，一个端口，适合中小型应用
 
-## 优势
-
-- ✅ **部署简单**：只需一个服务，一个端口
-- ✅ **无需 CORS 配置**：前后端同源
-- ✅ **适合中小型应用**：性能足够
-- ✅ **开发友好**：开发环境使用代理，生产环境统一服务
-- ✅ **成本低**：单个服务，资源占用少
-
-## 自定义和扩展
-
-### 修改默认配置
-
-文档中的所有配置都可以根据你的项目需求调整：
-
-1. **端口号**：默认 8001，可以在 `Procfile`、`Dockerfile`、`vite.config.js` 中修改
-2. **API 前缀**：默认 `/api`，可以在 `main.py` 和 `vite.config.js` 中修改
-3. **前端目录**：默认 `frontend/`，需要修改所有相关路径
-4. **构建输出**：默认 `dist/`，需要修改 `main.py` 和 `Dockerfile`
-5. **实例类型和区域**：Koyeb 部署脚本默认使用 `nano` 和 `na`，可以通过修改脚本调整
-
-### 适配其他 PaaS 平台
-
-虽然文档以 Koyeb 为例，但配置同样适用于其他平台：
-
-- **Heroku**：使用 `Procfile`，配置类似
-- **Railway**：支持 Dockerfile，配置相同
-- **Fly.io**：支持 Dockerfile，可能需要额外的配置文件
-- **Render**：支持 Dockerfile 和 Procfile
-- **其他平台**：大多数现代 PaaS 都支持 Dockerfile
+**注意**：所有配置都可以根据项目需求调整（端口、API 前缀、目录结构等）。配置同样适用于其他 PaaS 平台（Heroku、Railway、Fly.io、Render 等）。
 
 ## 注意事项
 
-- **性能**：静态文件由 FastAPI 服务，不是最优性能方案（但对于中小型应用足够）
-- **扩展性**：如需更高性能，可考虑使用 Nginx 反向代理
-- **路径配置**：确保前端构建时使用相对路径（`base: './'`），避免路径问题
-- **环境变量**：生产环境使用环境变量管理配置，不要硬编码
-- **项目特定配置**：文档中的示例需要根据你的实际项目结构调整
+- **性能**：静态文件由 FastAPI 服务，对于中小型应用足够，如需更高性能可考虑 Nginx 反向代理
+- **路径配置**：确保前端构建时使用正确的 base path，硬编码路径需要保持一致性
+- **环境变量**：生产环境使用环境变量管理配置
+- **项目特定配置**：文档中的示例需要根据实际项目结构调整
 
 ## 相关资源
 

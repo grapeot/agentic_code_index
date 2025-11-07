@@ -310,9 +310,16 @@ def deploy(
         # 构建环境变量配置（引用 Secrets）
         env_config = []
         if secret_refs:
-            # Koyeb 使用 @SECRET_NAME 格式引用 secrets
+            # 先获取 Secret ID，然后使用 ID 引用
             for secret_name in secret_refs:
-                env_config.append({"key": secret_name, "value": f"@{secret_name}"})
+                secret_id = get_or_create_secret(api_key, secret_name)
+                if secret_id:
+                    # Koyeb 使用 Secret ID 引用 secrets（格式：@{secret_id}）
+                    env_config.append({"key": secret_name, "value": f"@{secret_id}"})
+                    print(f"✓ 配置环境变量 {secret_name} 引用 Secret ID: {secret_id}")
+                else:
+                    print(f"⚠️  警告: Secret '{secret_name}' 不存在，跳过环境变量配置")
+                    print(f"   请在 Koyeb 控制台创建 Secret '{secret_name}'")
         
         # 注意：routes_config 和 base_path 已经在函数开头计算过了（第 145-162 行）
         # 这里直接使用之前计算的值，不需要重新计算
