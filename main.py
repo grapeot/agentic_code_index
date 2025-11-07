@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import Optional
 from contextlib import asynccontextmanager
 import os
+import logging
 from pathlib import Path
 
 from src.agent import Agent
@@ -224,36 +225,94 @@ async def query(request: QueryRequest):
 # 注册 API 路由（只使用 /api 前缀，根路径留给前端）
 app.include_router(api_router, prefix="/api", tags=["api"])
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Serve frontend static files if they exist (must be after all API routes)
 frontend_dist = Path("frontend/dist")
+logger.info(f"🔍 Checking frontend directory: {frontend_dist.absolute()}")
+logger.info(f"   Exists: {frontend_dist.exists()}")
+logger.info(f"   Is directory: {frontend_dist.exists() and frontend_dist.is_dir()}")
+
 if frontend_dist.exists():
-    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    # List contents for debugging
+    try:
+        contents = list(frontend_dist.iterdir())
+        logger.info(f"📁 Frontend dist contents: {[item.name for item in contents]}")
+        
+        # Check for index.html
+        index_file = frontend_dist / "index.html"
+        logger.info(f"   index.html exists: {index_file.exists()}")
+        
+        # Check for assets directory
+        assets_dir = frontend_dist / "assets"
+        logger.info(f"   assets directory exists: {assets_dir.exists()}")
+        if assets_dir.exists():
+            assets_files = list(assets_dir.iterdir())
+            logger.info(f"   assets files: {[f.name for f in assets_files[:10]]}")  # Show first 10
+    except Exception as e:
+        logger.error(f"❌ Error listing frontend dist: {e}")
+    
+    # Mount static assets
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+        logger.info(f"✅ Mounted /assets from {assets_dir.absolute()}")
+    else:
+        logger.warning(f"⚠️  Assets directory not found: {assets_dir.absolute()}")
     
     @app.get("/")
     async def serve_frontend_root():
         """Serve frontend index.html for root path."""
+        logger.info("🌐 GET / - Serving frontend root")
         index_file = frontend_dist / "index.html"
+        logger.info(f"   Checking: {index_file.absolute()}")
+        logger.info(f"   Exists: {index_file.exists()}")
+        
         if index_file.exists():
+            logger.info("✅ Serving index.html")
             return FileResponse(index_file)
-        raise HTTPException(status_code=404, detail="Frontend not found")
+        else:
+            logger.error(f"❌ index.html not found at {index_file.absolute()}")
+            raise HTTPException(status_code=404, detail=f"Frontend not found at {index_file.absolute()}")
     
     @app.get("/{path:path}")
     async def serve_frontend(path: str):
         """Serve frontend files, fallback to index.html for SPA routing."""
+        logger.info(f"🌐 GET /{path} - Serving frontend path")
+        
         # Skip API routes and docs
         if path.startswith(("api/", "docs", "openapi.json")):
+            logger.info(f"   Skipping (API route): {path}")
             raise HTTPException(status_code=404)
         
         file_path = frontend_dist / path
+        logger.info(f"   Checking file: {file_path.absolute()}")
+        logger.info(f"   Exists: {file_path.exists()}")
+        logger.info(f"   Is file: {file_path.exists() and file_path.is_file()}")
+        
         if file_path.exists() and file_path.is_file():
+            logger.info(f"✅ Serving file: {path}")
             return FileResponse(file_path)
         
         # For SPA routing, return index.html
         index_file = frontend_dist / "index.html"
+        logger.info(f"   Fallback to index.html: {index_file.absolute()}")
+        logger.info(f"   index.html exists: {index_file.exists()}")
+        
         if index_file.exists():
+            logger.info(f"✅ Serving index.html (SPA fallback) for path: {path}")
             return FileResponse(index_file)
         
-        raise HTTPException(status_code=404)
+        logger.error(f"❌ Neither file nor index.html found for path: {path}")
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+else:
+    logger.error(f"❌ Frontend dist directory does not exist: {frontend_dist.absolute()}")
+    logger.error(f"   Current working directory: {os.getcwd()}")
+    logger.error(f"   Listing current directory: {os.listdir('.')}")
+    if Path("frontend").exists():
+        logger.error(f"   frontend/ exists, contents: {os.listdir('frontend')}")
 
 
 if __name__ == "__main__":
