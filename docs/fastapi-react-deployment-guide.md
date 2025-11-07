@@ -1,19 +1,51 @@
-# FastAPI + React 一体化部署配置指南
+# FastAPI + React 一体化部署完整指南
+
+## 使用场景
+
+我有一个 FastAPI 后端 + React 前端应用，想要配置为简单的一体化部署模式。
+
+## 需求
+
+1. 前端通过 `npm run build` 构建为静态文件
+2. FastAPI 同时服务 API 请求和静态文件
+3. 前端通过 `/api` 前缀访问后端 API
+4. 支持 SPA 路由（React Router）
+5. 开发环境使用 Vite proxy，生产环境统一服务
 
 ## 目标
+
 配置 FastAPI + React 应用，实现前后端一体化部署，简化部署流程。
 
 ## 架构方案
+
 采用**前后端一体化部署**模式：
 - 前端通过构建工具（Vite/Webpack/CRA）构建为静态文件
 - FastAPI 同时服务 API 请求和静态文件
 - 生产环境中，所有请求通过同一个服务处理
+
+## 当前项目结构
+
+- 后端：FastAPI（`main.py`）
+- 前端：React + Vite（`frontend/` 目录）
+- 构建工具：Vite
+- 部署目标：Docker + Koyeb（或其他 PaaS）
+
+## 需要修改的文件
+
+1. `frontend/vite.config.js` - 配置构建输出和开发代理
+2. `main.py` - 添加静态文件服务和 API 路由前缀
+3. `Dockerfile` - 多阶段构建，包含前端构建步骤
+4. `frontend/src/**` - API 调用统一使用 `/api` 前缀
+5. `Procfile` - 定义运行命令（用于 Koyeb 等 PaaS 平台）
+6. `scripts/deploy_koyeb.py` - Koyeb 部署脚本（可选）
+7. `.dockerignore` - 排除不需要的文件
 
 ## 实施步骤
 
 ### 1. 前端配置
 
 #### Vite 项目配置 (`vite.config.js`)
+
 ```javascript
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -38,8 +70,15 @@ export default defineConfig({
 })
 ```
 
+**为什么需要 `base: './'`？**
+- 默认情况下，Vite 构建使用绝对路径（`/assets/...`）
+- 在生产环境中，如果应用部署在子路径下，绝对路径会导致资源加载失败
+- 使用相对路径（`./assets/...`）可以确保资源在任何路径下都能正确加载
+
 #### Create React App 配置
+
 如果使用 CRA，需要修改 `package.json`：
+
 ```json
 {
   "homepage": "./"
@@ -51,7 +90,7 @@ export default defineConfig({
 #### FastAPI 主文件 (`main.py`)
 
 ```python
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
@@ -110,6 +149,13 @@ if frontend_dist.exists():
         raise HTTPException(status_code=404)
 ```
 
+**为什么需要这样的路由顺序？**
+
+1. **API 路由先注册**：确保 `/api/*` 路径优先匹配 API 端点
+2. **静态文件后注册**：避免静态文件路径覆盖 API 路由
+3. **根路径单独处理**：`/` 路径必须明确返回 `index.html`，不能依赖通配符
+4. **SPA 路由回退**：所有未匹配的路径都返回 `index.html`，让前端路由处理
+
 ### 3. 前端代码修改
 
 #### API 调用统一使用 `/api` 前缀
@@ -124,6 +170,13 @@ const response = await fetch('/api/your-endpoint', {
 });
 ```
 
+**为什么使用 `/api` 前缀？**
+
+- **开发环境**：Vite proxy 可以轻松识别并转发 `/api` 请求到后端
+- **生产环境**：前后端同源，无需 CORS 配置
+- **路由区分**：清晰区分 API 请求和前端路由
+- **避免冲突**：防止前端路由与 API 端点冲突
+
 ### 4. Dockerfile 配置
 
 ```dockerfile
@@ -132,15 +185,26 @@ FROM node:18-slim AS frontend-builder
 
 WORKDIR /app/frontend
 
-# 复制前端 package.json
+# 复制前端 package.json（如果存在）
 COPY frontend/package*.json ./
 
-# 安装依赖
-RUN npm install
+# 安装依赖（npm install 默认会安装所有依赖包括 devDependencies）
+RUN if [ -f package.json ]; then \
+      npm install; \
+    else \
+      echo "No package.json found, skipping npm install"; \
+    fi
 
-# 复制前端文件并构建
+# 复制前端文件
 COPY frontend/ .
-RUN npm run build
+
+# 构建前端（如果 package.json 存在）
+RUN if [ -f package.json ]; then \
+      npm run build; \
+    else \
+      echo "No package.json found, skipping build"; \
+      mkdir -p dist && echo "<html><body>Frontend not built</body></html>" > dist/index.html; \
+    fi
 
 # Python 后端阶段
 FROM python:3.11-slim
@@ -162,7 +226,54 @@ ENV PORT=8001
 CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"
 ```
 
-### 5. 启动脚本（可选）
+**为什么使用多阶段构建？**
+
+- **减小镜像大小**：最终镜像不包含 Node.js 和 node_modules
+- **构建隔离**：前端构建错误不会影响后端镜像
+- **缓存优化**：Docker 可以缓存各个构建阶段
+- **安全性**：生产镜像不包含构建工具
+
+### 5. Procfile 配置（用于 Koyeb 等 PaaS）
+
+创建 `Procfile` 文件，定义运行命令：
+
+```
+web: python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}
+```
+
+**为什么需要 Procfile？**
+
+- Koyeb、Heroku 等 PaaS 平台需要知道如何启动应用
+- 如果 Dockerfile 有 CMD，通常不需要 Procfile
+- 但有些平台优先使用 Procfile，所以最好两个都提供
+
+### 6. .dockerignore 配置
+
+创建 `.dockerignore` 文件，排除不需要的文件：
+
+```
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.git/
+.env
+*.md
+docs/
+```
+
+**为什么需要 .dockerignore？**
+
+- **减小构建上下文**：Docker 构建时只发送需要的文件
+- **加快构建速度**：减少传输时间
+- **避免覆盖**：防止本地文件覆盖容器内构建的文件
+- **安全性**：避免将敏感文件（如 `.env`）打包到镜像中
+
+### 7. 启动脚本（可选）
 
 创建 `scripts/launch.sh` 用于本地开发：
 
@@ -183,6 +294,49 @@ cd ..
 # 3. 启动服务
 python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
+
+## Koyeb 部署配置
+
+### 环境变量
+
+- `PORT`: Koyeb 会自动设置，应用应使用此端口
+- `OPENAI_API_KEY`: 通过 Koyeb Secrets 配置
+
+### 部署脚本
+
+使用 `scripts/deploy_koyeb.py` 自动部署：
+
+```bash
+python scripts/deploy_koyeb.py
+```
+
+脚本会自动：
+- 创建或更新 Koyeb 应用和服务
+- 配置 Git 仓库连接（格式：`github.com/<org>/<repo>`）
+- 设置环境变量和 Secrets
+- 使用 nano 实例类型和 na 区域（可配置）
+
+### 部署脚本参数
+
+```bash
+python scripts/deploy_koyeb.py \
+  --repo https://github.com/your-org/your-repo \
+  --app-name your-app-name \
+  --branch master \
+  --port 8001 \
+  --secret-ref ANOTHER_SECRET
+```
+
+### Koyeb API 配置要点
+
+根据 [Koyeb API 文档](https://api.prod.koyeb.com/public.swagger.json)：
+
+1. **Git 仓库格式**：必须使用 `github.com/<org>/<repo>` 格式，不是完整 URL
+2. **服务定义结构**：
+   - `scalings` 必须是数组：`[{"min": 1, "max": 1}]`
+   - `instance_types` 必须是数组：`[{"type": "nano"}]`
+   - `CreateService` 只需要 `app_id` 和 `definition`，不需要顶层 `name`
+3. **运行命令**：通过 Procfile 或 Dockerfile CMD 定义
 
 ## 本地测试步骤
 
@@ -260,34 +414,162 @@ docker run -p 8001:8001 -e OPENAI_API_KEY=your-key your-app-name
 # 访问 http://localhost:8001 验证
 ```
 
-### 常见问题排查
+## 常见问题排查
 
-**问题 1: 前端页面空白**
-- 检查浏览器控制台是否有错误
-- 确认 `frontend/dist` 目录存在且包含文件
-- 检查 `vite.config.js` 中的 `base: './'` 配置
+### 问题 1: 前端页面空白
 
-**问题 2: API 调用失败**
-- 确认后端服务正在运行
-- 检查前端 API 调用是否使用 `/api` 前缀
-- 查看后端日志是否有错误
+**症状**：访问根路径显示空白页面或错误
 
-**问题 3: 静态资源 404**
-- 确认 `frontend/dist/assets` 目录存在
-- 检查 `main.py` 中的静态文件挂载路径是否正确
+**可能原因**：
+- `frontend/dist` 目录不存在或为空
+- 静态文件路径配置错误
+- 浏览器控制台有 JavaScript 错误
 
-**问题 4: 构建失败（缺少依赖）**
-- 运行 `npm install` 安装所有依赖
-- 检查 `package.json` 是否包含所有使用的包（如 axios）
-- 查看构建错误信息，添加缺失的依赖
+**解决方法**：
+1. 检查浏览器控制台是否有错误
+2. 确认 `frontend/dist` 目录存在且包含文件
+3. 检查 `vite.config.js` 中的 `base: './'` 配置
+4. 检查 `main.py` 中的静态文件挂载路径是否正确
 
-**问题 5: 访问根路径 `/` 显示 API 响应而不是前端页面**
-- **原因**：API 路由注册到了根路径，覆盖了前端服务
-- **解决**：确保只使用 `app.include_router(api_router, prefix="/api")`，不要注册不带前缀的版本
-- **检查**：确认代码中没有 `app.include_router(api_router, tags=["api"])` 这样的行
-- **验证**：访问 `http://localhost:8001/` 应该显示前端页面，访问 `http://localhost:8001/api/health` 应该返回 API 响应
+### 问题 2: API 调用失败
+
+**症状**：前端无法调用后端 API，返回 404 或 CORS 错误
+
+**可能原因**：
+- 后端服务未运行
+- API 路径前缀不正确
+- CORS 配置问题（生产环境不应该有）
+
+**解决方法**：
+1. 确认后端服务正在运行
+2. 检查前端 API 调用是否使用 `/api` 前缀
+3. 查看后端日志是否有错误
+4. 验证 API 端点是否在 `/api` 路径下注册
+
+### 问题 3: 静态资源 404
+
+**症状**：CSS、JS 文件加载失败，返回 404
+
+**可能原因**：
+- `frontend/dist/assets` 目录不存在
+- 静态文件挂载路径错误
+- Vite 构建配置问题
+
+**解决方法**：
+1. 确认 `frontend/dist/assets` 目录存在
+2. 检查 `main.py` 中的静态文件挂载路径是否正确
+3. 验证 Vite 构建输出目录配置
+4. 检查浏览器 Network 标签，查看实际请求的路径
+
+### 问题 4: 构建失败（缺少依赖）
+
+**症状**：`npm run build` 失败，提示缺少模块
+
+**可能原因**：
+- `package.json` 中缺少依赖
+- `node_modules` 未正确安装
+- 使用了未声明的包
+
+**解决方法**：
+1. 运行 `npm install` 安装所有依赖
+2. 检查 `package.json` 是否包含所有使用的包（如 axios）
+3. 查看构建错误信息，添加缺失的依赖
+4. 删除 `node_modules` 和 `package-lock.json`，重新安装
+
+### 问题 5: 访问根路径 `/` 显示 API 响应而不是前端页面
+
+**症状**：访问 `http://localhost:8001/` 返回 JSON 而不是 HTML
+
+**原因**：API 路由注册到了根路径，覆盖了前端服务
+
+**解决方法**：
+1. **检查代码**：确保只使用 `app.include_router(api_router, prefix="/api")`
+2. **避免错误**：不要注册不带前缀的版本，如 `app.include_router(api_router, tags=["api"])`
+3. **验证**：
+   - 访问 `http://localhost:8001/` 应该显示前端页面
+   - 访问 `http://localhost:8001/api/health` 应该返回 API 响应
+
+### 问题 6: SPA 路由刷新后 404
+
+**症状**：直接访问 `/some-route` 或刷新页面返回 404
+
+**原因**：后端没有配置 SPA 路由回退
+
+**解决方法**：
+1. 确保 `main.py` 中有 `/{path:path}` 路由处理函数
+2. 该函数应该检查文件是否存在，不存在则返回 `index.html`
+3. 确保该路由在所有 API 路由之后注册
+
+### 问题 7: Koyeb 部署失败 - "no command to run"
+
+**症状**：Koyeb 部署时提示没有运行命令
+
+**原因**：缺少 Procfile 或 Dockerfile CMD
+
+**解决方法**：
+1. 创建 `Procfile` 文件，包含运行命令
+2. 确保 Dockerfile 有 `CMD` 指令
+3. 将 Procfile 提交到 Git 仓库
+4. 重新部署服务
+
+### 问题 8: Koyeb API 错误 - "error_processing_request"
+
+**症状**：使用部署脚本时返回通用错误
+
+**原因**：API payload 格式不正确
+
+**解决方法**：
+1. 检查 Git 仓库格式：必须是 `github.com/<org>/<repo>`
+2. 检查 `scalings` 格式：必须是数组 `[{...}]`，不是对象 `{...}`
+3. 检查 `instance_types` 格式：必须是数组
+4. 查看详细的错误信息（脚本会显示请求和响应）
+
+## 关键要点
+
+### 1. API 路由前缀
+
+统一使用 `/api` 前缀，便于前端代理和路由区分
+
+- ⚠️ **重要**：只注册带 `/api` 前缀的 API 路由，不要注册到根路径
+- **使用**：`app.include_router(api_router, prefix="/api")`
+- **避免**：`app.include_router(api_router)`（这会覆盖根路径的前端服务）
+
+### 2. 静态文件服务顺序
+
+必须在所有 API 路由之后注册静态文件服务
+
+- 先注册 API 路由，再注册静态文件服务
+- 确保根路径 `/` 的处理函数在最后定义
+
+### 3. 根路径处理
+
+必须为根路径 `/` 单独定义处理函数
+
+- 不要依赖 `/{path:path}` 来处理根路径
+- 根路径应该直接返回 `index.html`
+
+### 4. SPA 路由回退
+
+所有未匹配的路由都返回 `index.html`，让前端路由处理
+
+- `/{path:path}` 函数处理所有非 API 路径
+- 如果文件不存在，回退到 `index.html`
+
+### 5. 构建输出目录
+
+确保前端构建输出到 `frontend/dist`（或相应目录）
+
+### 6. 开发环境代理
+
+使用 Vite/Webpack 的 proxy 功能，开发时无需 CORS
+
+### 7. 生产环境端口
+
+使用环境变量 `PORT`，Koyeb 等平台会自动设置
 
 ## 验证清单
+
+部署前请确认：
 
 - [ ] 前端依赖已安装（`npm install`）
 - [ ] 前端构建成功，生成 `frontend/dist` 目录
@@ -298,64 +580,39 @@ docker run -p 8001:8001 -e OPENAI_API_KEY=your-key your-app-name
 - [ ] SPA 路由（如 `/about`）正常工作
 - [ ] Docker 构建成功，镜像包含前端静态文件
 - [ ] Docker 容器运行正常，功能完整
+- [ ] Procfile 已创建并提交到 Git
+- [ ] Koyeb 部署脚本配置正确（如使用）
 
-### 6. .dockerignore 配置
+## 期望结果
 
-```
-node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/build/
-.venv/
-venv/
-__pycache__/
-*.pyc
-.git/
-.env
-```
+配置完成后，应该实现：
 
-## 关键要点
-
-1. **API 路由前缀**：统一使用 `/api` 前缀，便于前端代理和路由区分
-   - ⚠️ **重要**：只注册带 `/api` 前缀的 API 路由，不要注册到根路径
-   - 使用：`app.include_router(api_router, prefix="/api")`
-   - 避免：`app.include_router(api_router)`（这会覆盖根路径的前端服务）
-
-2. **静态文件服务顺序**：必须在所有 API 路由之后注册静态文件服务
-   - 先注册 API 路由，再注册静态文件服务
-   - 确保根路径 `/` 的处理函数在最后定义
-
-3. **根路径处理**：必须为根路径 `/` 单独定义处理函数
-   - 不要依赖 `/{path:path}` 来处理根路径
-   - 根路径应该直接返回 `index.html`
-
-4. **SPA 路由回退**：所有未匹配的路由都返回 `index.html`，让前端路由处理
-   - `/{path:path}` 函数处理所有非 API 路径
-   - 如果文件不存在，回退到 `index.html`
-
-5. **构建输出目录**：确保前端构建输出到 `frontend/dist`（或相应目录）
-
-6. **开发环境代理**：使用 Vite/Webpack 的 proxy 功能，开发时无需 CORS
-
-## 验证清单
-
-- [ ] 前端构建成功，生成 `frontend/dist` 目录
-- [ ] 后端可以访问 `/api/health` 等 API 端点
-- [ ] 访问根路径 `/` 显示前端页面
-- [ ] 前端 API 调用使用 `/api` 前缀
-- [ ] SPA 路由（如 `/about`）正常工作
-- [ ] Docker 构建成功，镜像包含前端静态文件
+- ✅ 运行 `npm run build` 后，前端构建到 `frontend/dist`
+- ✅ FastAPI 自动服务 `frontend/dist` 中的静态文件
+- ✅ 访问 `/` 显示前端页面，访问 `/api/*` 调用后端 API
+- ✅ Docker 构建时自动构建前端并包含在镜像中
+- ✅ Koyeb 部署时自动检测并运行应用
+- ✅ 开发环境使用 Vite proxy，无需 CORS
+- ✅ 生产环境前后端同源，性能足够
 
 ## 优势
 
-- ✅ 部署简单：只需一个服务，一个端口
-- ✅ 无需 CORS 配置：前后端同源
-- ✅ 适合中小型应用：性能足够
-- ✅ 开发友好：开发环境使用代理，生产环境统一服务
+- ✅ **部署简单**：只需一个服务，一个端口
+- ✅ **无需 CORS 配置**：前后端同源
+- ✅ **适合中小型应用**：性能足够
+- ✅ **开发友好**：开发环境使用代理，生产环境统一服务
+- ✅ **成本低**：单个服务，资源占用少
 
 ## 注意事项
 
-- 静态文件由 FastAPI 服务，不是最优性能方案（但对于中小型应用足够）
-- 如需更高性能，可考虑使用 Nginx 反向代理（见 Dockerfile.nginx 示例）
-- 确保前端构建时使用相对路径（`base: './'`），避免路径问题
+- **性能**：静态文件由 FastAPI 服务，不是最优性能方案（但对于中小型应用足够）
+- **扩展性**：如需更高性能，可考虑使用 Nginx 反向代理
+- **路径配置**：确保前端构建时使用相对路径（`base: './'`），避免路径问题
+- **环境变量**：生产环境使用环境变量管理配置，不要硬编码
 
+## 相关资源
+
+- [FastAPI 静态文件服务文档](https://fastapi.tiangolo.com/tutorial/static-files/)
+- [Vite 配置文档](https://vitejs.dev/config/)
+- [Koyeb API 文档](https://api.prod.koyeb.com/public.swagger.json)
+- [Koyeb 部署指南](https://www.koyeb.com/docs)
