@@ -58,18 +58,20 @@ function App() {
 
   return (
     <div className="app">
-      <div className="left-panel">
+      <div className="file-tree-panel">
         <FileTree 
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
         />
+      </div>
+      <div className="code-viewer-panel">
         <CodeViewer
           filePath={selectedFile}
           content={fileContent}
           highlightedLines={highlightedLines}
         />
       </div>
-      <div className="right-panel">
+      <div className="chat-panel">
         <ChatPanel
           onCodeReference={handleCodeReference}
         />
