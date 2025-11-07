@@ -59,6 +59,69 @@ def is_service_name_normalized(service_name: str) -> bool:
     return service_name == normalized
 
 
+def check_path_consistency(service_name: str) -> tuple[bool, str]:
+    """检查 .env、vite.config.js 和 api.js 中的路径配置是否一致
+    
+    Returns:
+        (is_consistent, error_message)
+    """
+    import re
+    
+    # 从 .env 计算期望的路径
+    expected_path = f"/{service_name}"
+    
+    # 读取 vite.config.js
+    vite_config_path = ROOT / "frontend" / "vite.config.js"
+    vite_path = None
+    if vite_config_path.exists():
+        try:
+            content = vite_config_path.read_text(encoding='utf-8')
+            # 查找 HARDCODED_BASE_PATH = '/xxx'
+            match = re.search(r"HARDCODED_BASE_PATH\s*=\s*['\"]([^'\"]+)['\"]", content)
+            if match:
+                vite_path = match.group(1)
+        except Exception as e:
+            return False, f"无法读取 vite.config.js: {e}"
+    else:
+        return False, f"vite.config.js 不存在: {vite_config_path}"
+    
+    # 读取 api.js
+    api_js_path = ROOT / "frontend" / "src" / "utils" / "api.js"
+    api_path = None
+    if api_js_path.exists():
+        try:
+            content = api_js_path.read_text(encoding='utf-8')
+            # 查找 HARDCODED_BASE_PATH = '/xxx'
+            match = re.search(r"HARDCODED_BASE_PATH\s*=\s*['\"]([^'\"]+)['\"]", content)
+            if match:
+                api_path = match.group(1)
+        except Exception as e:
+            return False, f"无法读取 api.js: {e}"
+    else:
+        return False, f"api.js 不存在: {api_js_path}"
+    
+    # 检查一致性
+    errors = []
+    if vite_path != expected_path:
+        errors.append(f"vite.config.js 中的 HARDCODED_BASE_PATH='{vite_path}' 与 SERVICE_NAME='{service_name}' 不一致（期望: '{expected_path}'）")
+    if api_path != expected_path:
+        errors.append(f"api.js 中的 HARDCODED_BASE_PATH='{api_path}' 与 SERVICE_NAME='{service_name}' 不一致（期望: '{expected_path}'）")
+    if vite_path != api_path:
+        errors.append(f"vite.config.js 和 api.js 中的 HARDCODED_BASE_PATH 不一致（vite: '{vite_path}', api: '{api_path}'）")
+    
+    if errors:
+        error_msg = "路径配置不一致:\n"
+        for error in errors:
+            error_msg += f"  - {error}\n"
+        error_msg += f"\n请确保以下配置一致:\n"
+        error_msg += f"  - .env 中的 SERVICE_NAME={service_name}\n"
+        error_msg += f"  - vite.config.js 中的 HARDCODED_BASE_PATH='{expected_path}'\n"
+        error_msg += f"  - api.js 中的 HARDCODED_BASE_PATH='{expected_path}'"
+        return False, error_msg
+    
+    return True, ""
+
+
 def get_or_create_secret(
     api_key: str,
     secret_name: str,
@@ -566,6 +629,17 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     
     print(f"✓ 服务名称已规范化: {service_name}")
+    
+    # 检查路径配置一致性
+    is_consistent, error_msg = check_path_consistency(service_name)
+    if not is_consistent:
+        print(f"❌ 错误: {error_msg}")
+        return 1
+    
+    print(f"✓ 路径配置一致性检查通过:")
+    print(f"  - .env SERVICE_NAME: {service_name}")
+    print(f"  - vite.config.js HARDCODED_BASE_PATH: /{service_name}")
+    print(f"  - api.js HARDCODED_BASE_PATH: /{service_name}")
 
     # 解析 Secret 引用，默认包含 OPENAI_API_KEY
     secret_refs = args.secret_ref or []

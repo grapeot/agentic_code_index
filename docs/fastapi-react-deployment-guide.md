@@ -112,9 +112,11 @@ function loadEnvFromRoot() {
 
 // 从环境变量或 .env 文件中的 SERVICE_NAME 计算基础路径
 // 优先级：构建时环境变量 > .env 文件
-// Docker 构建时会通过环境变量传递 SERVICE_NAME
+// 硬编码部署路径（如果已知）
+const HARDCODED_BASE_PATH = '/code-index'  // 部署路径，如果已知可以硬编码
+
 const serviceName = process.env.SERVICE_NAME || loadEnvFromRoot().SERVICE_NAME || ''
-const basePath = serviceName ? `/${serviceName}` : ''
+const basePath = HARDCODED_BASE_PATH || (serviceName ? `/${serviceName}` : '')
 
 export default defineConfig({
   plugins: [react()],
@@ -130,7 +132,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    // 从 SERVICE_NAME 计算基础路径
+    // 从硬编码路径或 SERVICE_NAME 计算基础路径
     // 根路径部署：base = './'
     // 子路径部署：base = '/service-name/'
     base: basePath ? `${basePath}/` : './'
@@ -139,10 +141,13 @@ export default defineConfig({
 ```
 
 **基础路径配置说明：**
-- **根路径部署**：如果未设置 `SERVICE_NAME`，使用相对路径 `./`，适用于部署在根路径的应用
-- **子路径部署**：设置 `SERVICE_NAME=your-service-name`，会自动计算基础路径为 `/your-service-name/`
-- **优先级**：构建时环境变量 > `.env` 文件（Docker 构建时 `.env` 文件不可用，所以通过环境变量传递）
+- **硬编码路径（推荐）**：如果部署路径已知，可以直接硬编码 `HARDCODED_BASE_PATH`，避免环境变量配置问题
+- **动态路径**：如果未设置硬编码路径，会从 `SERVICE_NAME` 环境变量或 `.env` 文件计算
+- **根路径部署**：如果未设置任何路径，使用相对路径 `./`，适用于部署在根路径的应用
+- **子路径部署**：设置 `HARDCODED_BASE_PATH='/your-service-name'` 或 `SERVICE_NAME=your-service-name`，会自动计算基础路径为 `/your-service-name/`
+- **优先级**：硬编码路径 > 构建时环境变量 > `.env` 文件
 - **服务名称要求**：`SERVICE_NAME` 必须是规范化的名称（小写字母、数字、连字符，不能以下划线开头或结尾）
+- **配置一致性**：部署脚本会自动检查 `.env`、`vite.config.js` 和 `api.js` 中的路径配置是否一致
 
 #### Create React App 配置
 
@@ -238,7 +243,9 @@ if frontend_dist.exists():
 
 // Get base path from Vite's import.meta.env.BASE_URL
 // BASE_URL is set by Vite based on the base config (e.g., '/service-name/')
-const BASE_URL = import.meta.env.BASE_URL || '/'
+// 硬编码部署路径（如果已知）
+const HARDCODED_BASE_PATH = '/code-index'  // 部署路径，如果已知可以硬编码
+const BASE_URL = HARDCODED_BASE_PATH ? `${HARDCODED_BASE_PATH}/` : (import.meta.env.BASE_URL || '/')
 
 // Helper function to build API URL
 export function apiUrl(path) {
@@ -486,26 +493,35 @@ python scripts/deploy_koyeb.py --list
 脚本会自动：
 - 从 `.env` 文件读取 `SERVICE_NAME`（**必需**，如果未设置会报错）
 - **检查服务名称是否规范化**：如果未规范化，会停止部署并提示修改 `.env` 文件
+- **检查路径配置一致性**：验证 `.env`、`vite.config.js` 和 `api.js` 中的路径配置是否一致，不一致会停止部署
 - 创建或更新 Koyeb 应用和服务（app 名称硬编码为 `ai-builders`）
 - 配置 Git 仓库连接（格式：`github.com/<org>/<repo>`）
 - **自动配置 Docker 构建**：在 `git` 对象内添加 `docker` 字段，使用 Dockerfile
 - **设置环境变量**：
   - `BASE_PATH=/${SERVICE_NAME}`：运行时环境变量，用于后端处理子路径
-  - `SERVICE_NAME=${SERVICE_NAME}`：构建时环境变量，用于 Vite 构建时设置 base path
+  - `SERVICE_NAME=${SERVICE_NAME}`：构建时环境变量，用于 Vite 构建时设置 base path（如果未硬编码）
 - 设置 Secrets（如 `OPENAI_API_KEY`）
 - 使用 nano 实例类型和 na 区域（可配置）
 - **自动配置路由**：`/${SERVICE_NAME}` -> `PORT`
 
-**子路径部署流程：**
+**子路径部署流程（硬编码路径方式）：**
 1. 部署脚本从 `.env` 读取 `SERVICE_NAME`（例如：`code-index`）
-2. 设置环境变量 `SERVICE_NAME=code-index` 和 `BASE_PATH=/code-index`
-3. Koyeb 构建 Docker 镜像时，`SERVICE_NAME` 环境变量传递给 Dockerfile
-4. Dockerfile 的 `ARG SERVICE_NAME` 接收环境变量
-5. 构建前端时，`SERVICE_NAME` 传递给 npm，Vite 读取并设置 `base: '/code-index/'`
-6. Vite 构建时，`import.meta.env.BASE_URL` 被设置为 `/code-index/`
-7. 前端代码使用 `apiUrl()` 函数，自动添加 base path：`/code-index/api/...`
-8. Koyeb 路由配置：`/code-index` -> `PORT`
-9. 后端运行时读取 `BASE_PATH` 环境变量，处理子路径请求
+2. **配置一致性检查**：验证 `vite.config.js` 和 `api.js` 中的 `HARDCODED_BASE_PATH` 是否与 `SERVICE_NAME` 一致
+3. 设置环境变量 `SERVICE_NAME=code-index` 和 `BASE_PATH=/code-index`
+4. Koyeb 构建 Docker 镜像时，`SERVICE_NAME` 环境变量传递给 Dockerfile
+5. Dockerfile 的 `ARG SERVICE_NAME` 接收环境变量
+6. 构建前端时，`vite.config.js` 使用硬编码的 `HARDCODED_BASE_PATH='/code-index'` 设置 `base: '/code-index/'`
+7. Vite 构建时，`import.meta.env.BASE_URL` 被设置为 `/code-index/`
+8. 前端代码使用 `api.js` 中硬编码的 `HARDCODED_BASE_PATH='/code-index'`，构建 API URL：`/code-index/api/...`
+9. Koyeb 路由配置：`/code-index` -> `PORT`
+10. 后端运行时读取 `BASE_PATH` 环境变量，处理子路径请求
+
+**注意**：如果使用硬编码路径，需要确保以下三个地方的路径一致：
+- `.env` 中的 `SERVICE_NAME=code-index`
+- `vite.config.js` 中的 `HARDCODED_BASE_PATH = '/code-index'`
+- `api.js` 中的 `HARDCODED_BASE_PATH = '/code-index'`
+
+部署脚本会自动检查这些配置的一致性，不一致时会停止部署并提示修改。
 
 ### 部署脚本参数
 
@@ -525,6 +541,11 @@ python scripts/deploy_koyeb.py \
   - 不能以连字符开头或结尾
   - 例如：`test-service` ✅，`test_service` ❌，`-test-service` ❌
 - 如果服务名称未规范化，脚本会停止并提示修改 `.env` 文件
+- **路径配置一致性检查**：脚本会自动检查以下配置是否一致：
+  - `.env` 中的 `SERVICE_NAME`
+  - `vite.config.js` 中的 `HARDCODED_BASE_PATH`
+  - `api.js` 中的 `HARDCODED_BASE_PATH`
+  - 如果配置不一致，脚本会停止部署并显示详细的错误信息，提示需要修改的地方
 - `--app-name`：已硬编码为 `ai-builders`，无需指定
 - **自动路由配置**：脚本会自动创建路由 `/${SERVICE_NAME}` -> `PORT`
   - 例如：如果 `SERVICE_NAME=my-service`，端口是 `8001`
