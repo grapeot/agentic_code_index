@@ -313,6 +313,29 @@ else:
     logger.error(f"   Listing current directory: {os.listdir('.')}")
     if Path("frontend").exists():
         logger.error(f"   frontend/ exists, contents: {os.listdir('frontend')}")
+    
+    # Register root route even if frontend doesn't exist, so we can show helpful error
+    @app.get("/")
+    async def serve_frontend_root_missing():
+        """Serve error message when frontend is not found."""
+        logger.error("❌ GET / - Frontend dist directory does not exist")
+        logger.error(f"   Expected path: {frontend_dist.absolute()}")
+        logger.error(f"   Current working directory: {os.getcwd()}")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Frontend not found. Expected at {frontend_dist.absolute()}. Current dir: {os.getcwd()}"
+        )
+    
+    @app.get("/{path:path}")
+    async def serve_frontend_missing(path: str):
+        """Serve error message when frontend is not found."""
+        if path.startswith(("api/", "docs", "openapi.json")):
+            raise HTTPException(status_code=404)
+        logger.error(f"❌ GET /{path} - Frontend dist directory does not exist")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Frontend not found. Expected at {frontend_dist.absolute()}"
+        )
 
 
 if __name__ == "__main__":

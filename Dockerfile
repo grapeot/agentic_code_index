@@ -18,7 +18,16 @@ COPY frontend/ .
 
 # 构建前端（如果 package.json 存在）
 RUN if [ -f package.json ]; then \
-      npm run build; \
+      echo "Building frontend..." && \
+      npm run build && \
+      echo "Build completed. Checking dist directory..." && \
+      ls -la dist/ && \
+      if [ -f dist/index.html ]; then \
+        echo "✅ index.html found"; \
+      else \
+        echo "❌ ERROR: index.html not found after build!"; \
+        exit 1; \
+      fi; \
     else \
       echo "No package.json found, skipping build"; \
       mkdir -p dist && echo "<html><body>Frontend not built</body></html>" > dist/index.html; \
@@ -38,6 +47,23 @@ COPY . .
 
 # 从前端构建阶段复制构建好的静态文件
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# 验证前端文件已复制
+RUN echo "Verifying frontend files..." && \
+    ls -la frontend/ && \
+    if [ -d frontend/dist ]; then \
+      echo "✅ frontend/dist exists" && \
+      ls -la frontend/dist/ && \
+      if [ -f frontend/dist/index.html ]; then \
+        echo "✅ frontend/dist/index.html exists"; \
+      else \
+        echo "❌ ERROR: frontend/dist/index.html not found!"; \
+        exit 1; \
+      fi; \
+    else \
+      echo "❌ ERROR: frontend/dist directory not found!"; \
+      exit 1; \
+    fi
 
 ENV PORT=8001
 
