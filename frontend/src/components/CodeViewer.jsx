@@ -52,9 +52,9 @@ function CodeViewer({ filePath, content, highlightedLines }) {
   const loadFileContent = async (path) => {
     setLoading(true)
     try {
-      // Try direct file endpoint first
+      // Load file directly from filesystem via API
       const response = await axios.get(`/api/file`, {
-        params: { path }
+        params: { file_path: path }
       })
       if (response.data && response.data.content) {
         setCode(response.data.content)
@@ -63,7 +63,8 @@ function CodeViewer({ filePath, content, highlightedLines }) {
       }
     } catch (error) {
       console.error('Failed to load file:', error)
-      setCode('// Failed to load file content')
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to load file content'
+      setCode(`// Error: ${errorMsg}`)
     } finally {
       setLoading(false)
     }

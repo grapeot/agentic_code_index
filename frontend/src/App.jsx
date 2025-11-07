@@ -26,27 +26,18 @@ function App() {
     setHighlightedLines(null)
     
     try {
-      // Try to load file directly from filesystem first
-      const response = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`)
+      // Load file directly from filesystem via API
+      const response = await fetch(`/api/file?file_path=${encodeURIComponent(filePath)}`)
       if (response.ok) {
         const data = await response.json()
         setFileContent(data.content || '')
       } else {
-        // Fallback: use query endpoint
-        const queryResponse = await fetch(`/api/query`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question: `读取文件 ${filePath} 的完整内容`,
-            max_iterations: 3
-          })
-        })
-        const queryData = await queryResponse.json()
-        setFileContent(queryData.answer || '')
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to load file' }))
+        setFileContent(`// Error: ${errorData.detail || 'File not found'}`)
       }
     } catch (error) {
       console.error('Failed to load file:', error)
-      setFileContent('// Failed to load file content')
+      setFileContent(`// Error: Failed to load file content - ${error.message}`)
     }
   }
 
