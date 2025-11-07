@@ -363,30 +363,45 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 如果使用 Koyeb，可以使用 `scripts/deploy_koyeb.py` 自动部署：
 
 ```bash
-python scripts/deploy_koyeb.py
+# 基本用法（service-name 是必需的）
+python scripts/deploy_koyeb.py --service-name your-service-name
+
+# 查看所有应用和服务
+python scripts/deploy_koyeb.py --list
 ```
 
 脚本会自动：
-- 创建或更新 Koyeb 应用和服务
+- 创建或更新 Koyeb 应用和服务（app 名称硬编码为 `ai-builders`）
 - 配置 Git 仓库连接（格式：`github.com/<org>/<repo>`）
 - 设置环境变量和 Secrets
 - 使用 nano 实例类型和 na 区域（可配置）
+- **自动配置路由**：`/<service-name>` -> `PORT`
+- **自动规范化服务名称**：将下划线转换为连字符，转小写
 
 ### 部署脚本参数
 
 ```bash
 python scripts/deploy_koyeb.py \
-  --repo https://github.com/your-org/your-repo \
-  --app-name your-app-name \
-  --branch master \
-  --port 8001 \
-  --secret-ref YOUR_SECRET_NAME
+  --service-name your-service-name \  # 必需：服务名称（会自动规范化）
+  --repo https://github.com/your-org/your-repo \  # 可选：GitHub 仓库 URL
+  --branch master \  # 可选：Git 分支（默认：master）
+  --port 8001 \  # 可选：应用端口（默认：8001）
+  --secret-ref YOUR_SECRET_NAME  # 可选：引用额外的 Koyeb Secret
 ```
 
-**注意**：
-- 脚本默认会自动引用 `OPENAI_API_KEY` Secret（如果存在）。如果需要引用其他 Secrets，使用 `--secret-ref` 参数。
-- 如果不需要自动引用 `OPENAI_API_KEY`，可以修改脚本中的默认行为，或使用 `--secret-ref` 显式指定所有需要的 Secrets。
-- 脚本中的默认值（如应用名、端口、实例类型等）可以根据你的项目需求修改。
+**重要说明**：
+- `--service-name`：**必需参数**。服务名称会自动规范化：
+  - 下划线（`_`）会被转换为连字符（`-`）
+  - 自动转换为小写
+  - 移除无效字符
+  - 例如：`test_service` → `test-service`
+- `--app-name`：已硬编码为 `ai-builders`，无需指定
+- **自动路由配置**：脚本会自动创建路由 `/<service-name>` -> `PORT`
+  - 例如：如果 service-name 是 `my-service`，端口是 `8001`
+  - 会自动配置路由 `/my-service` -> `8001`
+- 脚本默认会自动引用 `OPENAI_API_KEY` Secret（如果存在）
+- 如果需要引用其他 Secrets，使用 `--secret-ref` 参数
+- 使用 `--list` 选项可以查看所有应用和服务，不需要提供 `--service-name`
 
 ### Koyeb API 配置要点
 
@@ -398,6 +413,13 @@ python scripts/deploy_koyeb.py \
    - `instance_types` 必须是数组：`[{"type": "nano"}]`
    - `CreateService` 只需要 `app_id` 和 `definition`，不需要顶层 `name`
 3. **运行命令**：通过 Procfile 或 Dockerfile CMD 定义
+4. **路由配置**：可以使用 `routes` 字段配置路径到端口的映射
+   - 格式：`[{"port": 8001, "path": "/your-path"}]`
+   - 部署脚本会自动配置 `/<service-name>` -> `PORT` 的路由
+5. **服务名称格式**：只能包含小写字母、数字和连字符（hyphen）
+   - 不能包含下划线（underscore）
+   - 不能以连字符开头或结尾
+   - 部署脚本会自动规范化服务名称
 
 ## 本地测试步骤
 
