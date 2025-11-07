@@ -373,6 +373,7 @@ python scripts/deploy_koyeb.py --list
 脚本会自动：
 - 创建或更新 Koyeb 应用和服务（app 名称硬编码为 `ai-builders`）
 - 配置 Git 仓库连接（格式：`github.com/<org>/<repo>`）
+- **自动配置 Docker 构建**：在 `git` 对象内添加 `docker` 字段，使用 Dockerfile
 - 设置环境变量和 Secrets
 - 使用 nano 实例类型和 na 区域（可配置）
 - **自动配置路由**：`/<service-name>` -> `PORT`
@@ -408,15 +409,29 @@ python scripts/deploy_koyeb.py \
 根据 [Koyeb API 文档](https://api.prod.koyeb.com/public.swagger.json)：
 
 1. **Git 仓库格式**：必须使用 `github.com/<org>/<repo>` 格式，不是完整 URL
-2. **服务定义结构**：
+2. **Docker 构建配置**：要使用 Dockerfile 而不是 buildpack，需要在 `git` 对象内添加 `docker` 字段：
+   ```json
+   "git": {
+     "repository": "github.com/your-org/your-repo",
+     "branch": "master",
+     "docker": {
+       "dockerfile": "Dockerfile"
+     }
+   }
+   ```
+   - ⚠️ **重要**：`docker` 字段必须在 `git` 对象内，不是独立的 `build` 字段
+   - `dockerfile` 属性指定 Dockerfile 的路径（相对于仓库根目录）
+   - 如果不指定 `docker` 字段，Koyeb 会尝试使用 buildpack 自动检测
+   - 部署脚本会自动配置 Docker 构建
+3. **服务定义结构**：
    - `scalings` 必须是数组：`[{"min": 1, "max": 1}]`
    - `instance_types` 必须是数组：`[{"type": "nano"}]`
    - `CreateService` 只需要 `app_id` 和 `definition`，不需要顶层 `name`
-3. **运行命令**：通过 Procfile 或 Dockerfile CMD 定义
-4. **路由配置**：可以使用 `routes` 字段配置路径到端口的映射
+4. **运行命令**：通过 Procfile 或 Dockerfile CMD 定义
+5. **路由配置**：可以使用 `routes` 字段配置路径到端口的映射
    - 格式：`[{"port": 8001, "path": "/your-path"}]`
    - 部署脚本会自动配置 `/<service-name>` -> `PORT` 的路由
-5. **服务名称格式**：只能包含小写字母、数字和连字符（hyphen）
+6. **服务名称格式**：只能包含小写字母、数字和连字符（hyphen）
    - 不能包含下划线（underscore）
    - 不能以连字符开头或结尾
    - 部署脚本会自动规范化服务名称
