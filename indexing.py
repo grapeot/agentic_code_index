@@ -39,8 +39,8 @@ class CodeIndexer:
         
         for ext in self.supported_extensions:
             for file_path in path.rglob(f"*{ext}"):
-                # Skip virtual environments and common ignore patterns
-                if any(ignore in str(file_path) for ignore in ['.venv', 'node_modules', '__pycache__', '.git']):
+                # Skip virtual environments, test directories, and common ignore patterns
+                if any(ignore in str(file_path) for ignore in ['.venv', 'node_modules', '__pycache__', '.git', 'tests/']):
                     continue
                 files.append(str(file_path))
         

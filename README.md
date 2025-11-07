@@ -75,7 +75,7 @@ curl -X POST http://localhost:8001/query \
 
 ```bash
 source .venv/bin/activate
-python test_mvp.py
+python tests/test_mvp.py
 ```
 
 ## 项目结构
@@ -86,7 +86,10 @@ python test_mvp.py
 ├── agent.py          # Agent 核心逻辑
 ├── tools.py          # 工具函数（cat, ls, find）
 ├── models.py         # Pydantic 数据模型
-├── test_mvp.py       # 测试脚本
+├── tests/            # 测试脚本目录
+│   ├── test_mvp.py   # MVP 测试脚本
+│   ├── test_index.py # 索引测试脚本
+│   └── ...
 ├── requirements.txt  # 依赖列表
 └── README.md         # 本文件
 ```
