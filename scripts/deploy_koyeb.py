@@ -240,10 +240,9 @@ def deploy(
                     "git": {
                         "repository": git_repo_url,
                         "branch": branch,
-                    },
-                    "build": {
-                        "type": "DOCKERFILE",
-                        "dockerfile_path": "Dockerfile"
+                        "docker": {
+                            "dockerfile": "Dockerfile"
+                        }
                     },
                     "ports": [
                         {
@@ -291,10 +290,9 @@ def deploy(
                     "git": {
                         "repository": git_repo_url,
                         "branch": branch,
-                    },
-                    "build": {
-                        "type": "DOCKERFILE",
-                        "dockerfile_path": "Dockerfile"
+                        "docker": {
+                            "dockerfile": "Dockerfile"
+                        }
                     },
                     "ports": [
                         {
