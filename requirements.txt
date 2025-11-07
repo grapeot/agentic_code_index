@@ -3,4 +3,7 @@ uvicorn==0.32.0
 openai>=2.7.1
 pydantic>=2.12.4
 python-dotenv==1.0.1
+requests>=2.31.0
+faiss-cpu>=1.7.4
+numpy>=1.24.0
 

@@ -141,11 +141,122 @@ def find_files(pattern: str, start_path: str = ".") -> Dict[str, Any]:
         }
 
 
+# Global searcher instance (will be set by main.py)
+_searcher = None
+
+def set_searcher(searcher):
+    """Set the global searcher instance."""
+    global _searcher
+    _searcher = searcher
+
+def search_codebase(question: str, index_type: str, top_k: int = 5) -> Dict[str, Any]:
+    """Search the indexed codebase.
+    
+    Args:
+        question: Natural language query
+        index_type: 'file' or 'function'
+        top_k: Number of results to return
+        
+    Returns:
+        Dict with 'success', 'results', and 'error' fields
+    """
+    global _searcher
+    if _searcher is None:
+        return {
+            "success": False,
+            "results": None,
+            "error": "Index not loaded. Please run /index endpoint first."
+        }
+    
+    try:
+        results = _searcher.search(question, index_type, top_k)
+        return {
+            "success": True,
+            "results": results,
+            "error": None
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "results": None,
+            "error": f"Search failed: {str(e)}"
+        }
+
+def list_file_content(file_path: str) -> Dict[str, Any]:
+    """Get full content of a file from indexed metadata.
+    
+    Args:
+        file_path: Path to the file
+        
+    Returns:
+        Dict with 'success', 'content', and 'error' fields
+    """
+    global _searcher
+    if _searcher is None:
+        # Fallback to file system
+        return cat_file(file_path)
+    
+    try:
+        content = _searcher.list_file_content(file_path)
+        if content:
+            return {
+                "success": True,
+                "content": content,
+                "error": None
+            }
+        else:
+            # Fallback to file system
+            return cat_file(file_path)
+    except Exception as e:
+        return {
+            "success": False,
+            "content": None,
+            "error": f"Failed to get file content: {str(e)}"
+        }
+
 # Tool registry
 TOOLS = {
+    "search": {
+        "function": search_codebase,
+        "description": "Search the indexed codebase using semantic search. Use this to find relevant code based on natural language queries.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "Natural language query describing what code to find"
+                },
+                "index_type": {
+                    "type": "string",
+                    "enum": ["file", "function"],
+                    "description": "Type of index to search: 'file' for file-level overview, 'function' for function-level details"
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of results to return (default: 5)",
+                    "default": 5
+                }
+            },
+            "required": ["question", "index_type"]
+        }
+    },
+    "list_file_content": {
+        "function": list_file_content,
+        "description": "Get the full content of a file. Use this when you need to see the complete code of a file that was found in search results.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the file to read"
+                }
+            },
+            "required": ["file_path"]
+        }
+    },
     "cat": {
         "function": cat_file,
-        "description": "Read the contents of a file. Use this when you need to see what's inside a file.",
+        "description": "Read the contents of a file from filesystem. Use this when you need to see what's inside a file.",
         "parameters": {
             "type": "object",
             "properties": {

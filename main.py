@@ -2,12 +2,34 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from contextlib import asynccontextmanager
+import os
 
 from agent import Agent
 from models import FinalAnswer
+from indexing import CodeIndexer
+from search import CodeSearcher
+from tools import set_searcher
 
 
-app = FastAPI(title="Code Indexing Agent MVP", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize searcher on startup if index exists."""
+    global searcher
+    index_dir = os.getenv("INDEX_DIR", "index_data")
+    if os.path.exists(index_dir) and os.path.exists(os.path.join(index_dir, "metadata.json")):
+        try:
+            searcher = CodeSearcher(index_dir=index_dir)
+            set_searcher(searcher)
+            print(f"✅ Loaded index from {index_dir}")
+        except Exception as e:
+            print(f"⚠️  Failed to load index: {e}")
+    yield
+
+app = FastAPI(title="Code Indexing Agent", version="1.0.0", lifespan=lifespan)
+
+# Global searcher instance
+searcher: Optional[CodeSearcher] = None
 
 
 class QueryRequest(BaseModel):
@@ -25,16 +47,34 @@ class QueryResponse(BaseModel):
     reasoning: Optional[str] = None
 
 
+class IndexRequest(BaseModel):
+    """Request model for index endpoint."""
+    codebase_path: str
+    output_dir: Optional[str] = "index_data"
+
+
+class IndexResponse(BaseModel):
+    """Response model for index endpoint."""
+    status: str
+    total_files: int
+    total_chunks: int
+    file_chunks: int
+    function_chunks: int
+    output_dir: str
+
+
 @app.get("/")
 async def root():
     """Root endpoint."""
     return {
-        "message": "Code Indexing Agent MVP",
-        "version": "0.1.0",
+        "message": "Code Indexing Agent",
+        "version": "1.0.0",
         "endpoints": {
+            "/index": "POST - Index a codebase",
             "/query": "POST - Query the agent with a question",
             "/health": "GET - Health check"
-        }
+        },
+        "index_loaded": searcher is not None
     }
 
 
@@ -42,6 +82,23 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.post("/index", response_model=IndexResponse)
+async def index_codebase(request: IndexRequest):
+    """Index a codebase."""
+    try:
+        indexer = CodeIndexer()
+        result = indexer.index(request.codebase_path, request.output_dir)
+        
+        # Reload searcher with new index
+        global searcher
+        searcher = CodeSearcher(index_dir=request.output_dir)
+        set_searcher(searcher)
+        
+        return IndexResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
 
 
 @app.post("/query", response_model=QueryResponse)

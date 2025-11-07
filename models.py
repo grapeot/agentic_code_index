@@ -11,7 +11,7 @@ class FinalAnswer(BaseModel):
         pattern="^(high|medium|low)$"
     )
     sources: List[str] = Field(
-        default_factory=list,
+        default=[],
         description="List of file paths or tool results that were used to generate this answer"
     )
     reasoning: Optional[str] = Field(
