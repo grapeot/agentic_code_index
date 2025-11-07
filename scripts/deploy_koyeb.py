@@ -248,8 +248,10 @@ def deploy(
                 base_path = route_path
         
         # 添加 BASE_PATH 到环境变量（用于 Docker 构建）
-        # 注意：Koyeb 的环境变量在构建时可能不可用，所以我们需要通过 ARG 传递
-        # 但我们可以先尝试通过环境变量传递，如果不行，再考虑其他方法
+        # 注意：Koyeb 的环境变量通常是运行时环境变量，Docker 构建时可能无法访问
+        # 当前实现：尝试通过环境变量传递，Dockerfile 会在构建时读取
+        # 如果构建时 BASE_PATH 不可用，Dockerfile 会使用默认值 './'（相对路径）
+        # 这可能导致子路径部署时资源加载失败，需要手动设置或使用其他方法
         env_config.append({"key": "BASE_PATH", "value": base_path})
 
         if not service_id:

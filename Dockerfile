@@ -1,13 +1,6 @@
 # 多阶段构建：先构建前端
 FROM node:18-slim AS frontend-builder
 
-# 支持子路径部署：通过 ARG 或环境变量传递基础路径
-# 如果未设置，使用相对路径 './'（适用于根路径部署）
-# 如果设置了，例如 BASE_PATH=/test-service，则使用 '/test-service/'
-# 注意：Koyeb 的环境变量在构建时可能不可用，所以优先使用 ARG
-ARG BASE_PATH=${BASE_PATH:-}
-ENV BASE_PATH=${BASE_PATH}
-
 WORKDIR /app/frontend
 
 # 复制前端 package.json（如果存在）
@@ -24,9 +17,12 @@ RUN if [ -f package.json ]; then \
 COPY frontend/ .
 
 # 构建前端（如果 package.json 存在）
+# 注意：BASE_PATH 需要通过环境变量传递（Koyeb 的环境变量在构建时可能不可用）
+# 如果 BASE_PATH 未设置，使用相对路径 './'（适用于根路径部署）
 RUN if [ -f package.json ]; then \
-      echo "Building frontend with BASE_PATH=${BASE_PATH}..." && \
-      npm run build && \
+      echo "Building frontend..." && \
+      echo "BASE_PATH=${BASE_PATH:-}" && \
+      BASE_PATH=${BASE_PATH:-} npm run build && \
       echo "Build completed. Checking dist directory..." && \
       ls -la dist/ && \
       if [ -f dist/index.html ]; then \
