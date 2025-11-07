@@ -16,7 +16,8 @@ from tools import set_searcher
 async def lifespan(app: FastAPI):
     """Initialize searcher on startup if index exists."""
     global searcher
-    index_dir = os.getenv("INDEX_DIR", "index_data")
+    # Default to self_index if it exists, otherwise use index_data or INDEX_DIR env var
+    index_dir = os.getenv("INDEX_DIR", "self_index" if os.path.exists("self_index") and os.path.exists("self_index/metadata.json") else "index_data")
     if os.path.exists(index_dir) and os.path.exists(os.path.join(index_dir, "metadata.json")):
         try:
             searcher = CodeSearcher(index_dir=index_dir)

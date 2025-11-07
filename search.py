@@ -16,7 +16,7 @@ class CodeSearcher:
     
     def __init__(
         self,
-        index_dir: str = "index_data",
+        index_dir: str = "self_index",
         embedding_model: str = "text-embedding-3-small",
         api_key: Optional[str] = None
     ):
