@@ -270,12 +270,11 @@ def deploy(
             if route_path and route_path != "/":
                 base_path = route_path
         
-        # 添加 BASE_PATH 到环境变量（用于 Docker 构建）
-        # 注意：Koyeb 的环境变量通常是运行时环境变量，Docker 构建时可能无法访问
-        # 当前实现：尝试通过环境变量传递，Dockerfile 会在构建时读取
-        # 如果构建时 BASE_PATH 不可用，Dockerfile 会使用默认值 './'（相对路径）
-        # 这可能导致子路径部署时资源加载失败，需要手动设置或使用其他方法
+        # 添加 BASE_PATH 和 SERVICE_NAME 到环境变量（用于 Docker 构建和运行时）
+        # SERVICE_NAME 用于 Vite 构建时设置 base path
+        # BASE_PATH 用于运行时环境变量
         env_config.append({"key": "BASE_PATH", "value": base_path})
+        env_config.append({"key": "SERVICE_NAME", "value": service_name})
 
         if not service_id:
             print(f"创建服务: {service_name}...")

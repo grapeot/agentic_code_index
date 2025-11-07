@@ -1,6 +1,9 @@
 # 多阶段构建：先构建前端
 FROM node:18-slim AS frontend-builder
 
+# 接受构建参数：SERVICE_NAME（用于计算 base path）
+ARG SERVICE_NAME
+
 WORKDIR /app/frontend
 
 # 复制前端 package.json（如果存在）
@@ -17,15 +20,11 @@ RUN if [ -f package.json ]; then \
 COPY frontend/ .
 
 # 构建前端（如果 package.json 存在）
-# 注意：BASE_PATH 需要通过环境变量传递（Koyeb 的环境变量在构建时可能不可用）
-# 如果 BASE_PATH 未设置，使用相对路径 './'（适用于根路径部署）
-# 构建后，如果 BASE_PATH 设置了，会通过脚本修改 HTML 文件中的路径
+# SERVICE_NAME 通过 ARG 传递，用于设置 Vite 的 base path
+# 注意：ARG 需要在构建时通过 --build-arg 传递，或者通过环境变量传递
 RUN if [ -f package.json ]; then \
-      echo "Building frontend..." && \
-      echo "BASE_PATH=${BASE_PATH:-}" && \
-      export BASE_PATH=${BASE_PATH:-} && \
-      echo "Exported BASE_PATH=${BASE_PATH}" && \
-      npm run build && \
+      echo "Building frontend with SERVICE_NAME=${SERVICE_NAME:-}" && \
+      SERVICE_NAME=${SERVICE_NAME:-} npm run build && \
       echo "Build completed. Checking dist directory..." && \
       ls -la dist/ && \
       if [ -f dist/index.html ]; then \
@@ -36,17 +35,6 @@ RUN if [ -f package.json ]; then \
         echo "Checking for asset paths:" && \
         grep -o 'href="[^"]*"' dist/index.html | head -3 || echo "No href found" && \
         grep -o 'src="[^"]*"' dist/index.html | head -3 || echo "No src found"; \
-        echo "---" && \
-        if [ -n "$BASE_PATH" ] && [ "$BASE_PATH" != "/" ]; then \
-          echo "BASE_PATH is set to: $BASE_PATH, updating HTML paths..." && \
-          sed -i "s|href=\"/assets/|href=\"$BASE_PATH/assets/|g" dist/index.html && \
-          sed -i "s|src=\"/assets/|src=\"$BASE_PATH/assets/|g" dist/index.html && \
-          echo "Updated HTML paths:" && \
-          grep -o 'href="[^"]*"' dist/index.html | head -3 && \
-          grep -o 'src="[^"]*"' dist/index.html | head -3; \
-        else \
-          echo "BASE_PATH not set or is root, using relative paths (no modification needed)"; \
-        fi; \
       else \
         echo "❌ ERROR: index.html not found after build!"; \
         exit 1; \

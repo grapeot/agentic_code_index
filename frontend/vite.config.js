@@ -25,9 +25,9 @@ function loadEnvFromRoot() {
   }
 }
 
-// 从 .env 文件中的 SERVICE_NAME 计算基础路径
-const rootEnv = loadEnvFromRoot()
-const serviceName = rootEnv.SERVICE_NAME || ''
+// 从环境变量或 .env 文件中的 SERVICE_NAME 计算基础路径
+// 优先级：构建时环境变量 > .env 文件
+const serviceName = process.env.SERVICE_NAME || loadEnvFromRoot().SERVICE_NAME || ''
 const basePath = serviceName ? `/${serviceName}` : ''
 
 // 调试输出
