@@ -6,6 +6,14 @@ import react from '@vitejs/plugin-react'
 // 或者通过构建时的环境变量 BASE_PATH（在 Dockerfile 中设置）
 const basePath = process.env.VITE_BASE_PATH || process.env.BASE_PATH || ''
 
+// 调试输出（仅在构建时）
+if (process.env.NODE_ENV !== 'production' || basePath) {
+  console.log(`[Vite Config] BASE_PATH from env: ${process.env.BASE_PATH || 'not set'}`)
+  console.log(`[Vite Config] VITE_BASE_PATH from env: ${process.env.VITE_BASE_PATH || 'not set'}`)
+  console.log(`[Vite Config] Final basePath: "${basePath}"`)
+  console.log(`[Vite Config] Final base config: "${basePath ? `${basePath}/` : './'}"`)
+}
+
 export default defineConfig({
   plugins: [react()],
   server: {

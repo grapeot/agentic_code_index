@@ -22,7 +22,9 @@ COPY frontend/ .
 RUN if [ -f package.json ]; then \
       echo "Building frontend..." && \
       echo "BASE_PATH=${BASE_PATH:-}" && \
-      BASE_PATH=${BASE_PATH:-} npm run build && \
+      export BASE_PATH=${BASE_PATH:-} && \
+      echo "Exported BASE_PATH=${BASE_PATH}" && \
+      npm run build && \
       echo "Build completed. Checking dist directory..." && \
       ls -la dist/ && \
       if [ -f dist/index.html ]; then \
