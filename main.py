@@ -113,6 +113,70 @@ async def list_files():
     return {"files": sorted(list(files))}
 
 
+@app.get("/file-tree")
+async def get_file_tree(root_path: str = "."):
+    """Get real filesystem directory structure."""
+    import os
+    from pathlib import Path
+    
+    def build_tree(path: Path, base_path: Path):
+        """Recursively build file tree structure."""
+        result = {
+            "name": path.name if path != base_path else ".",
+            "path": str(path.relative_to(base_path)) if path != base_path else ".",
+            "type": "directory",
+            "children": []
+        }
+        
+        try:
+            # Skip hidden directories and common ignore patterns
+            skip_patterns = ['.git', '.venv', 'node_modules', '__pycache__', '.pytest_cache']
+            if any(pattern in path.name for pattern in skip_patterns):
+                return None
+            
+            if path.is_dir():
+                try:
+                    items = sorted(path.iterdir(), key=lambda x: (x.is_file(), x.name.lower()))
+                    for item in items:
+                        # Skip hidden files and directories
+                        if item.name.startswith('.'):
+                            continue
+                        
+                        # Skip ignore patterns
+                        if any(pattern in item.name for pattern in skip_patterns):
+                            continue
+                        
+                        if item.is_file():
+                            # Only include supported code files
+                            supported_extensions = {'.py', '.js', '.ts', '.go', '.java', '.cpp', '.c', '.rs', '.rb', '.php', '.md', '.json', '.yaml', '.yml', '.html', '.css'}
+                            if item.suffix in supported_extensions:
+                                result["children"].append({
+                                    "name": item.name,
+                                    "path": str(item.relative_to(base_path)),
+                                    "type": "file"
+                                })
+                        elif item.is_dir():
+                            child_tree = build_tree(item, base_path)
+                            if child_tree:
+                                result["children"].append(child_tree)
+                except PermissionError:
+                    pass
+        except Exception as e:
+            print(f"Error building tree for {path}: {e}")
+        
+        return result
+    
+    try:
+        root = Path(root_path).resolve()
+        if not root.exists():
+            return {"error": f"Path does not exist: {root_path}"}
+        
+        tree = build_tree(root, root)
+        return tree if tree else {"error": "Failed to build file tree"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.post("/index", response_model=IndexResponse)
 async def index_codebase(request: IndexRequest):
     """Index a codebase."""

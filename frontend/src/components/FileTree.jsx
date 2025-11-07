@@ -14,55 +14,44 @@ function FileTree({ onFileSelect, selectedFile }) {
 
   const loadFileTree = async () => {
     try {
-      // Get file list from backend
-      const response = await fetch('/api/files')
+      // Get real filesystem tree from backend
+      const response = await fetch('/api/file-tree')
       const data = await response.json()
       
-      if (data.files && data.files.length > 0) {
-        setTree(buildTreeFromPaths(data.files))
+      if (data.error) {
+        console.error('Failed to load file tree:', data.error)
+        setTree([])
+        return
+      }
+      
+      if (data && data.children) {
+        // Convert backend tree structure to frontend format
+        setTree(convertTreeStructure(data.children))
       } else {
-        // Fallback to mock structure if no index
-        setTree(buildTreeFromPaths([
-          'agent.py',
-          'main.py',
-          'models.py',
-          'tools.py',
-          'indexing.py',
-          'search.py',
-          'test_mvp.py',
-          'test_query.py'
-        ]))
+        setTree([])
       }
     } catch (error) {
       console.error('Failed to load file tree:', error)
-      // Fallback to mock structure
-      setTree(buildTreeFromPaths([
-        'agent.py',
-        'main.py',
-        'models.py',
-        'tools.py'
-      ]))
+      setTree([])
     }
   }
 
-  const buildTreeFromPaths = (paths) => {
-    const tree = {}
-    paths.forEach(path => {
-      const parts = path.split('/')
-      let current = tree
-      parts.forEach((part, index) => {
-        if (!current[part]) {
-          current[part] = {
-            name: part,
-            path: parts.slice(0, index + 1).join('/'),
-            children: {},
-            isFile: index === parts.length - 1
-          }
-        }
-        current = current[part].children
-      })
-    })
-    return Object.values(tree)
+  const convertTreeStructure = (children) => {
+    if (!children || !Array.isArray(children)) {
+      return []
+    }
+    
+    return children.map(item => ({
+      name: item.name,
+      path: item.path,
+      isFile: item.type === 'file',
+      children: item.type === 'directory' && item.children 
+        ? convertTreeStructure(item.children).reduce((acc, child) => {
+            acc[child.name] = child
+            return acc
+          }, {})
+        : {}
+    }))
   }
 
   const toggleExpand = (path) => {
