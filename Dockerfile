@@ -2,14 +2,17 @@
 FROM node:18-slim AS frontend-builder
 
 # 接受构建参数：SERVICE_NAME（用于计算 base path）
+# Koyeb 的环境变量在构建时可能不可用，所以同时支持 ARG 和环境变量
 ARG SERVICE_NAME
+# 如果 ARG 未设置，尝试从环境变量读取（Koyeb 可能通过环境变量传递）
+ENV SERVICE_NAME=${SERVICE_NAME}
 
 WORKDIR /app/frontend
 
 # 复制前端 package.json（如果存在）
 COPY frontend/package*.json ./
 
-# 安装依赖（npm install 默认会安装所有依赖包括 devDependencies）
+# 安装依赖
 RUN if [ -f package.json ]; then \
       npm install; \
     else \
@@ -19,22 +22,19 @@ RUN if [ -f package.json ]; then \
 # 复制前端文件
 COPY frontend/ .
 
-# 构建前端（如果 package.json 存在）
-# SERVICE_NAME 通过 ARG 传递，用于设置 Vite 的 base path
-# 注意：ARG 需要在构建时通过 --build-arg 传递，或者通过环境变量传递
+# 构建前端
+# SERVICE_NAME 通过 ARG 或环境变量传递，用于设置 Vite 的 base path
 RUN if [ -f package.json ]; then \
-      echo "Building frontend with SERVICE_NAME=${SERVICE_NAME:-}" && \
-      SERVICE_NAME=${SERVICE_NAME:-} npm run build && \
+      echo "Building frontend..." && \
+      echo "SERVICE_NAME from ARG: ${SERVICE_NAME:-not set}" && \
+      echo "SERVICE_NAME from ENV: $SERVICE_NAME" && \
+      SERVICE_NAME=${SERVICE_NAME:-$SERVICE_NAME} npm run build && \
       echo "Build completed. Checking dist directory..." && \
       ls -la dist/ && \
       if [ -f dist/index.html ]; then \
         echo "✅ index.html found"; \
-        echo "Checking index.html content for base path..." && \
-        head -10 dist/index.html && \
-        echo "---" && \
-        echo "Checking for asset paths:" && \
-        grep -o 'href="[^"]*"' dist/index.html | head -3 || echo "No href found" && \
-        grep -o 'src="[^"]*"' dist/index.html | head -3 || echo "No src found"; \
+        echo "Checking index.html for base path..." && \
+        head -20 dist/index.html | grep -E '(base|href|src)' || echo "No base path found in HTML"; \
       else \
         echo "❌ ERROR: index.html not found after build!"; \
         exit 1; \
