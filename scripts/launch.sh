@@ -84,5 +84,8 @@ echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
+# ⚠️ 重要：必须使用 --host 0.0.0.0 而不是 127.0.0.1 或 localhost
+# 0.0.0.0 绑定所有网络接口，允许从外部访问（Docker、容器、远程访问等）
+# 127.0.0.1 和 localhost 只绑定本地回环接口，只能从本机访问
 python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 

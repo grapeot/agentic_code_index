@@ -298,9 +298,6 @@ def deploy(
         print("=== 部署完成 ===")
         print(f"应用 ID: {app_id}")
         print(f"服务 ID: {service_id}")
-        print()
-        print("查看部署状态:")
-        print(f"  https://app.koyeb.com/apps/{app_name}/services/{service_name}")
         return True
 
     except httpx.HTTPStatusError as e:

@@ -268,6 +268,12 @@ CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"
 - **缓存优化**：Docker 可以缓存各个构建阶段
 - **安全性**：生产镜像不包含构建工具
 
+**⚠️ 重要：CMD 中必须使用 `--host 0.0.0.0`**
+
+- 使用 `0.0.0.0` 绑定所有网络接口，允许从容器外部访问
+- 不要使用 `127.0.0.1` 或 `localhost`，这些只能从容器内部访问
+- 这是 Docker 部署时最常见的问题之一
+
 ### 5. Procfile 配置（用于 Koyeb 等 PaaS）
 
 创建 `Procfile` 文件，定义运行命令：
@@ -281,6 +287,12 @@ web: python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}
 - Koyeb、Heroku 等 PaaS 平台需要知道如何启动应用
 - 如果 Dockerfile 有 CMD，通常不需要 Procfile
 - 但有些平台优先使用 Procfile，所以最好两个都提供
+
+**⚠️ 重要：必须使用 `--host 0.0.0.0`**
+
+- 使用 `0.0.0.0` 绑定所有网络接口，允许从外部访问
+- 不要使用 `127.0.0.1` 或 `localhost`，这些只能从容器内部访问
+- 这是部署到容器或 PaaS 平台时最常见的问题之一
 
 ### 6. .dockerignore 配置
 
@@ -576,6 +588,54 @@ docker run -p 8001:8001 \
 3. 检查 `instance_types` 格式：必须是数组
 4. 查看详细的错误信息（脚本会显示请求和响应）
 
+### 问题 9: 应用无法从外部访问（容器/部署环境）
+
+**症状**：应用在容器或部署环境中运行，但无法从外部访问，返回 "Connection refused" 或超时
+
+**原因**：应用绑定到了 `127.0.0.1` 或 `localhost`，而不是 `0.0.0.0`
+
+**为什么会出现这个问题？**
+- `127.0.0.1` 和 `localhost` 只绑定到本地回环接口，只能从容器内部访问
+- 在 Docker 容器、Koyeb、Heroku 等部署环境中，外部请求需要通过容器的网络接口
+- 必须使用 `0.0.0.0` 绑定所有网络接口，才能从外部访问
+
+**解决方法**：
+1. **检查启动命令**：确保所有启动命令都使用 `--host 0.0.0.0`：
+   ```bash
+   # ✅ 正确
+   python -m uvicorn main:app --host 0.0.0.0 --port 8001
+   
+   # ❌ 错误（容器/部署环境）
+   python -m uvicorn main:app --host 127.0.0.1 --port 8001
+   python -m uvicorn main:app --host localhost --port 8001
+   ```
+
+2. **检查 Procfile**：确保使用 `0.0.0.0`：
+   ```
+   web: python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}
+   ```
+
+3. **检查 Dockerfile CMD**：确保使用 `0.0.0.0`：
+   ```dockerfile
+   CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"
+   ```
+
+4. **检查 main.py**（如果使用 `uvicorn.run`）：
+   ```python
+   # ✅ 正确
+   uvicorn.run(app, host="0.0.0.0", port=8001)
+   
+   # ❌ 错误
+   uvicorn.run(app, host="127.0.0.1", port=8001)
+   ```
+
+5. **本地开发环境**：本地开发时可以使用 `127.0.0.1` 或 `localhost`，但建议统一使用 `0.0.0.0` 以避免部署时的混淆
+
+**验证方法**：
+- 在容器内运行：`curl http://0.0.0.0:8001/api/health` 应该成功
+- 从外部访问：`curl http://<container-ip>:8001/api/health` 应该成功
+- 如果绑定到 `127.0.0.1`，外部访问会失败
+
 ## 关键要点
 
 ### 1. API 路由前缀
@@ -626,6 +686,30 @@ docker run -p 8001:8001 \
 - `Dockerfile` 中的 `ENV PORT` 和 `CMD` 中的端口
 - `vite.config.js` 中的 proxy target 端口（开发环境）
 
+### 8. 主机绑定地址（重要！）
+
+**必须使用 `0.0.0.0` 而不是 `127.0.0.1` 或 `localhost`**
+
+这是部署到容器或 PaaS 平台时最常见的问题之一。
+
+**为什么必须使用 `0.0.0.0`？**
+- `0.0.0.0` 绑定到所有网络接口，允许从外部访问
+- `127.0.0.1` 和 `localhost` 只绑定到本地回环接口，只能从容器内部访问
+- 在 Docker、Koyeb、Heroku 等环境中，外部请求必须通过容器的网络接口
+
+**所有启动命令都必须使用 `0.0.0.0`：**
+- ✅ `uvicorn main:app --host 0.0.0.0 --port 8001`
+- ❌ `uvicorn main:app --host 127.0.0.1 --port 8001`
+- ❌ `uvicorn main:app --host localhost --port 8001`
+
+**需要检查的地方：**
+1. `Procfile` 中的启动命令
+2. `Dockerfile` 中的 `CMD` 指令
+3. `scripts/launch.sh` 中的启动命令
+4. `main.py` 中的 `uvicorn.run()` 调用（如果使用）
+
+**本地开发环境**：虽然本地开发可以使用 `127.0.0.1`，但建议统一使用 `0.0.0.0` 以避免部署时的混淆。
+
 ## 验证清单
 
 部署前请确认：
@@ -640,6 +724,7 @@ docker run -p 8001:8001 \
 - [ ] Docker 构建成功，镜像包含前端静态文件
 - [ ] Docker 容器运行正常，功能完整
 - [ ] Procfile 已创建并提交到 Git
+- [ ] **所有启动命令都使用 `--host 0.0.0.0`（不是 `127.0.0.1` 或 `localhost`）**
 - [ ] Koyeb 部署脚本配置正确（如使用 Koyeb）
 - [ ] 所有路径配置与你的项目结构匹配
 

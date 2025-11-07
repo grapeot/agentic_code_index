@@ -232,7 +232,7 @@ if __name__ == "__main__":
 # Serve frontend static files if they exist (must be after all API routes)
 frontend_dist = Path("frontend/dist")
 if frontend_dist.exists():
-    app.mount("/static", StaticFiles(directory=str(frontend_dist / "assets")), name="static")
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
     
     @app.get("/")
     async def serve_frontend_root():
