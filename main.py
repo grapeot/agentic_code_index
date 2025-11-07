@@ -1,12 +1,13 @@
 """FastAPI server for the code indexing agent."""
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 from contextlib import asynccontextmanager
 import os
 import logging
+import re
 from pathlib import Path
 
 from src.agent import Agent
@@ -263,7 +264,7 @@ if frontend_dist.exists():
         logger.warning(f"⚠️  Assets directory not found: {assets_dir.absolute()}")
     
     @app.get("/")
-    async def serve_frontend_root():
+    async def serve_frontend_root(request: Request):
         """Serve frontend index.html for root path."""
         logger.info("🌐 GET / - Serving frontend root")
         index_file = frontend_dist / "index.html"
@@ -271,14 +272,25 @@ if frontend_dist.exists():
         logger.info(f"   Exists: {index_file.exists()}")
         
         if index_file.exists():
+            # Read HTML content
+            html_content = index_file.read_text(encoding='utf-8')
+            
+            # Get base path from request URL
+            base_path = request.url.path.rstrip('/')
+            if base_path and base_path != '/':
+                # Replace absolute paths with base path
+                html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
+                html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
+                logger.info(f"   Updated HTML paths with base_path: {base_path}")
+            
             logger.info("✅ Serving index.html")
-            return FileResponse(index_file)
+            return HTMLResponse(content=html_content)
         else:
             logger.error(f"❌ index.html not found at {index_file.absolute()}")
             raise HTTPException(status_code=404, detail=f"Frontend not found at {index_file.absolute()}")
     
     @app.get("/{path:path}")
-    async def serve_frontend(path: str):
+    async def serve_frontend(path: str, request: Request):
         """Serve frontend files, fallback to index.html for SPA routing."""
         logger.info(f"🌐 GET /{path} - Serving frontend path")
         
@@ -302,8 +314,31 @@ if frontend_dist.exists():
         logger.info(f"   index.html exists: {index_file.exists()}")
         
         if index_file.exists():
+            # Read HTML content
+            html_content = index_file.read_text(encoding='utf-8')
+            
+            # Get base path from request URL
+            # Koyeb routes like /test-service -> PORT, so the request path might be /test-service
+            # We need to extract the base path from the full request URL
+            request_path = request.url.path.rstrip('/')
+            
+            # If request path is not root and doesn't look like a file path, use it as base path
+            base_path = ""
+            if request_path and request_path != '/' and not request_path.startswith(('/api', '/docs', '/openapi.json', '/assets')):
+                # Check if this looks like a service path (single segment, not a file)
+                path_parts = [p for p in request_path.split('/') if p]
+                if len(path_parts) == 1 and not path_parts[0].endswith(('.html', '.js', '.css', '.png', '.jpg', '.svg')):
+                    base_path = request_path
+                    logger.info(f"   Detected base_path from request: {base_path}")
+            
+            if base_path:
+                # Replace absolute paths with base path
+                html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
+                html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
+                logger.info(f"   Updated HTML paths with base_path: {base_path}")
+            
             logger.info(f"✅ Serving index.html (SPA fallback) for path: {path}")
-            return FileResponse(index_file)
+            return HTMLResponse(content=html_content)
         
         logger.error(f"❌ Neither file nor index.html found for path: {path}")
         raise HTTPException(status_code=404, detail=f"File not found: {path}")

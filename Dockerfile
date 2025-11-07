@@ -19,6 +19,7 @@ COPY frontend/ .
 # 构建前端（如果 package.json 存在）
 # 注意：BASE_PATH 需要通过环境变量传递（Koyeb 的环境变量在构建时可能不可用）
 # 如果 BASE_PATH 未设置，使用相对路径 './'（适用于根路径部署）
+# 构建后，如果 BASE_PATH 设置了，会通过脚本修改 HTML 文件中的路径
 RUN if [ -f package.json ]; then \
       echo "Building frontend..." && \
       echo "BASE_PATH=${BASE_PATH:-}" && \
@@ -30,12 +31,22 @@ RUN if [ -f package.json ]; then \
       if [ -f dist/index.html ]; then \
         echo "✅ index.html found"; \
         echo "Checking index.html content for base path..." && \
-        echo "First 10 lines of index.html:" && \
         head -10 dist/index.html && \
         echo "---" && \
         echo "Checking for asset paths:" && \
         grep -o 'href="[^"]*"' dist/index.html | head -3 || echo "No href found" && \
         grep -o 'src="[^"]*"' dist/index.html | head -3 || echo "No src found"; \
+        echo "---" && \
+        if [ -n "$BASE_PATH" ] && [ "$BASE_PATH" != "/" ]; then \
+          echo "BASE_PATH is set to: $BASE_PATH, updating HTML paths..." && \
+          sed -i "s|href=\"/assets/|href=\"$BASE_PATH/assets/|g" dist/index.html && \
+          sed -i "s|src=\"/assets/|src=\"$BASE_PATH/assets/|g" dist/index.html && \
+          echo "Updated HTML paths:" && \
+          grep -o 'href="[^"]*"' dist/index.html | head -3 && \
+          grep -o 'src="[^"]*"' dist/index.html | head -3; \
+        else \
+          echo "BASE_PATH not set or is root, using relative paths (no modification needed)"; \
+        fi; \
       else \
         echo "❌ ERROR: index.html not found after build!"; \
         exit 1; \
