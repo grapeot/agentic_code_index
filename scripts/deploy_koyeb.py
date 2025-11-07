@@ -341,6 +341,81 @@ def deploy(
         return False
 
 
+def list_services(api_key: str, app_name: str | None = None) -> bool:
+    """列出 Koyeb 服务"""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    
+    try:
+        # 获取所有应用
+        apps_resp = httpx.get(
+            f"{KOYEB_API_BASE}/apps",
+            headers=headers,
+            timeout=30.0,
+        )
+        apps_resp.raise_for_status()
+        apps_data = apps_resp.json()
+        
+        print("=== Koyeb 应用和服务列表 ===\n")
+        
+        apps = apps_data.get("apps", [])
+        if not apps:
+            print("未找到任何应用")
+            return True
+        
+        print(f"找到 {len(apps)} 个应用:\n")
+        
+        for app in apps:
+            app_id = app.get("id")
+            app_name_current = app.get("name")
+            
+            # 如果指定了 app_name，只显示匹配的应用
+            if app_name and app_name_current != app_name:
+                continue
+            
+            print(f"应用: {app_name_current} (ID: {app_id})")
+            
+            # 获取该应用下的所有服务
+            services_resp = httpx.get(
+                f"{KOYEB_API_BASE}/services",
+                headers=headers,
+                params={"app_id": app_id},
+                timeout=30.0,
+            )
+            services_resp.raise_for_status()
+            services_data = services_resp.json()
+            
+            services = services_data.get("services", [])
+            if services:
+                for service in services:
+                    service_name = service.get("name")
+                    service_id = service.get("id")
+                    status = service.get("status", "unknown")
+                    print(f"  └─ 服务: {service_name} (ID: {service_id}, 状态: {status})")
+            else:
+                print("  └─ (无服务)")
+            print()
+        
+        return True
+        
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP 错误: {e.response.status_code}")
+        print(f"响应内容: {e.response.text[:500]}")
+        try:
+            error_data = e.response.json()
+            print(f"错误详情: {json.dumps(error_data, indent=2, ensure_ascii=False)}")
+        except:
+            pass
+        return False
+    except Exception as e:
+        print(f"错误: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="使用 Koyeb API 部署 GitHub 仓库",
@@ -353,13 +428,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--app-name",
-        default="agentic-code-index",
-        help="Koyeb 应用名称 (默认: agentic-code-index)",
+        default="ai-builders",
+        help="Koyeb 应用名称 (默认: ai-builders)",
     )
     parser.add_argument(
         "--service-name",
-        default=None,
-        help="Koyeb 服务名称 (默认: {app-name}-service)",
+        default="agentic-code-index-service",
+        help="Koyeb 服务名称 (默认: agentic-code-index-service)",
     )
     parser.add_argument(
         "--branch",
@@ -378,6 +453,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="SECRET_NAME",
         help="引用 Koyeb Secret 作为环境变量（可多次使用，例如: --secret-ref ANOTHER_SECRET）。默认会自动引用 OPENAI_API_KEY",
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="列出所有应用和服务，然后退出",
+    )
 
     args = parser.parse_args(argv)
 
@@ -389,8 +469,13 @@ def main(argv: list[str] | None = None) -> int:
         print("请在 .env 文件中设置 KOYEB_API_KEY")
         return 1
 
-    # 设置服务名称
-    service_name = args.service_name or f"{args.app_name}-service"
+    # 如果只是列出服务，则执行并退出（不指定 app_name 以显示所有应用）
+    if args.list:
+        success = list_services(api_key, None)  # 显示所有应用
+        return 0 if success else 1
+
+    # 设置服务名称（如果未指定则使用默认值）
+    service_name = args.service_name if args.service_name is not None else "agentic-code-index-service"
 
     # 解析 Secret 引用，默认包含 OPENAI_API_KEY
     secret_refs = args.secret_ref or []
