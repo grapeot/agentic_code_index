@@ -72,9 +72,8 @@ async def your_endpoint():
     # 你的 API 逻辑
     pass
 
-# 注册 API 路由（支持 /api 前缀和直接访问）
+# 注册 API 路由（只使用 /api 前缀，根路径留给前端）
 app.include_router(api_router, prefix="/api", tags=["api"])
-app.include_router(api_router, tags=["api"])  # 向后兼容
 
 # 服务前端静态文件（必须在所有 API 路由之后）
 frontend_dist = Path("frontend/dist")
@@ -82,11 +81,20 @@ if frontend_dist.exists():
     # 服务静态资源（CSS, JS, images 等）
     app.mount("/static", StaticFiles(directory=str(frontend_dist / "assets")), name="static")
     
+    # 服务前端根路径
+    @app.get("/")
+    async def serve_frontend_root():
+        """Serve frontend index.html for root path."""
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend not found")
+    
     # 服务前端页面（SPA 路由回退）
     @app.get("/{path:path}")
     async def serve_frontend(path: str):
         """Serve frontend files, fallback to index.html for SPA routing."""
-        # 跳过 API 路由
+        # 跳过 API 路由和 docs
         if path.startswith(("api/", "docs", "openapi.json")):
             raise HTTPException(status_code=404)
         
@@ -273,6 +281,12 @@ docker run -p 8001:8001 -e OPENAI_API_KEY=your-key your-app-name
 - 检查 `package.json` 是否包含所有使用的包（如 axios）
 - 查看构建错误信息，添加缺失的依赖
 
+**问题 5: 访问根路径 `/` 显示 API 响应而不是前端页面**
+- **原因**：API 路由注册到了根路径，覆盖了前端服务
+- **解决**：确保只使用 `app.include_router(api_router, prefix="/api")`，不要注册不带前缀的版本
+- **检查**：确认代码中没有 `app.include_router(api_router, tags=["api"])` 这样的行
+- **验证**：访问 `http://localhost:8001/` 应该显示前端页面，访问 `http://localhost:8001/api/health` 应该返回 API 响应
+
 ## 验证清单
 
 - [ ] 前端依赖已安装（`npm install`）
@@ -303,10 +317,25 @@ __pycache__/
 ## 关键要点
 
 1. **API 路由前缀**：统一使用 `/api` 前缀，便于前端代理和路由区分
+   - ⚠️ **重要**：只注册带 `/api` 前缀的 API 路由，不要注册到根路径
+   - 使用：`app.include_router(api_router, prefix="/api")`
+   - 避免：`app.include_router(api_router)`（这会覆盖根路径的前端服务）
+
 2. **静态文件服务顺序**：必须在所有 API 路由之后注册静态文件服务
-3. **SPA 路由回退**：所有未匹配的路由都返回 `index.html`，让前端路由处理
-4. **构建输出目录**：确保前端构建输出到 `frontend/dist`（或相应目录）
-5. **开发环境代理**：使用 Vite/Webpack 的 proxy 功能，开发时无需 CORS
+   - 先注册 API 路由，再注册静态文件服务
+   - 确保根路径 `/` 的处理函数在最后定义
+
+3. **根路径处理**：必须为根路径 `/` 单独定义处理函数
+   - 不要依赖 `/{path:path}` 来处理根路径
+   - 根路径应该直接返回 `index.html`
+
+4. **SPA 路由回退**：所有未匹配的路由都返回 `index.html`，让前端路由处理
+   - `/{path:path}` 函数处理所有非 API 路径
+   - 如果文件不存在，回退到 `index.html`
+
+5. **构建输出目录**：确保前端构建输出到 `frontend/dist`（或相应目录）
+
+6. **开发环境代理**：使用 Vite/Webpack 的 proxy 功能，开发时无需 CORS
 
 ## 验证清单
 
