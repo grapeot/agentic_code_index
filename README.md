@@ -4,10 +4,7 @@
 
 ## 演示视频
 
-<video width="650" controls>
-  <source src="https://github.com/grapeot/agentic_code_index/raw/refs/heads/master/docs/screenshot.mp4" type="video/mp4">
-  您的浏览器不支持视频标签。
-</video>
+[查看演示视频](docs/screenshot.mp4)
 
 ## 功能特性
 
