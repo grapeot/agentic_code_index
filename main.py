@@ -221,9 +221,8 @@ async def query(request: QueryRequest):
         raise HTTPException(status_code=500, detail=f"Agent query failed: {str(e)}")
 
 
-# 注册 API 路由（支持 /api 前缀和直接访问）
+# 注册 API 路由（只使用 /api 前缀，根路径留给前端）
 app.include_router(api_router, prefix="/api", tags=["api"])
-app.include_router(api_router, tags=["api"])  # 也支持直接访问（向后兼容）
 
 
 if __name__ == "__main__":
@@ -235,18 +234,29 @@ frontend_dist = Path("frontend/dist")
 if frontend_dist.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_dist / "assets")), name="static")
     
+    @app.get("/")
+    async def serve_frontend_root():
+        """Serve frontend index.html for root path."""
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend not found")
+    
     @app.get("/{path:path}")
     async def serve_frontend(path: str):
         """Serve frontend files, fallback to index.html for SPA routing."""
-        # Skip API routes
-        if path.startswith(("api/", "index", "query", "file", "files", "file-tree", "health", "docs", "openapi.json")):
+        # Skip API routes and docs
+        if path.startswith(("api/", "docs", "openapi.json")):
             raise HTTPException(status_code=404)
+        
         file_path = frontend_dist / path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
+        
         # For SPA routing, return index.html
         index_file = frontend_dist / "index.html"
         if index_file.exists():
             return FileResponse(index_file)
+        
         raise HTTPException(status_code=404)
 
