@@ -84,10 +84,34 @@ your-project/
 ```javascript
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 
-// 获取基础路径：支持子路径部署
-// 通过环境变量 VITE_BASE_PATH 或 BASE_PATH 设置
-const basePath = process.env.VITE_BASE_PATH || process.env.BASE_PATH || ''
+// 读取 .env 文件（从项目根目录）
+function loadEnvFromRoot() {
+  try {
+    const envPath = resolve(__dirname, '../.env')
+    const envContent = readFileSync(envPath, 'utf-8')
+    const env = {}
+    for (const line of envContent.split('\n')) {
+      const trimmed = line.trim()
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [key, ...valueParts] = trimmed.split('=')
+        if (key && valueParts.length > 0) {
+          env[key.trim()] = valueParts.join('=').trim().replace(/^["']|["']$/g, '')
+        }
+      }
+    }
+    return env
+  } catch (error) {
+    return {}
+  }
+}
+
+// 从 .env 文件中的 SERVICE_NAME 计算基础路径
+const rootEnv = loadEnvFromRoot()
+const serviceName = rootEnv.SERVICE_NAME || ''
+const basePath = serviceName ? `/${serviceName}` : ''
 
 export default defineConfig({
   plugins: [react()],
@@ -103,19 +127,17 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    // 支持子路径部署：通过环境变量设置基础路径
-    // 如果未设置，使用相对路径 './'（适用于根路径部署）
-    // 如果设置了，例如 BASE_PATH=/test-service，则使用 '/test-service/'
+    // 从 .env 文件中的 SERVICE_NAME 计算基础路径
     base: basePath ? `${basePath}/` : './'
   }
 })
 ```
 
 **基础路径配置说明：**
-- **根路径部署**：不设置 `BASE_PATH`，使用相对路径 `./`，适用于部署在根路径的应用
-- **子路径部署**：设置 `BASE_PATH=/your-path`，使用绝对路径 `/your-path/`，适用于部署在子路径的应用（如 Koyeb 的 `/<service-name>` 路由）
-- 部署脚本会自动计算并设置 `BASE_PATH` 环境变量（基于服务名称或路由配置）
-- 如果环境变量在构建时不可用，Dockerfile 会尝试通过 ARG 传递 `BASE_PATH`
+- **根路径部署**：如果 `.env` 文件中未设置 `SERVICE_NAME`，使用相对路径 `./`，适用于部署在根路径的应用
+- **子路径部署**：在 `.env` 文件中设置 `SERVICE_NAME=your-service-name`，会自动计算基础路径为 `/your-service-name/`，适用于部署在子路径的应用（如 Koyeb 的 `/<service-name>` 路由）
+- **统一配置**：前端和后端都从同一个 `.env` 文件读取 `SERVICE_NAME`，确保配置一致
+- **服务名称要求**：`SERVICE_NAME` 必须是规范化的名称（小写字母、数字、连字符，不能以下划线开头或结尾）
 
 #### Create React App 配置
 
@@ -360,9 +382,30 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 
 ## Koyeb 部署配置
 
-### 环境变量
+### 环境变量配置
 
-- `PORT`: Koyeb 会自动设置，应用应使用此端口
+在项目根目录创建 `.env` 文件，配置以下变量：
+
+```bash
+# Koyeb API Key（必需）
+KOYEB_API_KEY=your_koyeb_api_key
+
+# 服务名称（必需，用于部署）
+# 要求：只能包含小写字母、数字和连字符 (-)
+#       不能以下划线 (_) 开头或结尾
+#       不能包含其他特殊字符
+SERVICE_NAME=test-service
+
+# OpenAI API Key（可选，如果使用 Koyeb Secrets 则不需要在这里设置）
+OPENAI_API_KEY=your_openai_api_key
+```
+
+**重要说明**：
+- `SERVICE_NAME` 必须是规范化的名称，部署脚本会检查，未规范化则停止部署
+- 服务名称会自动用于：
+  - Koyeb 服务名称
+  - 路由配置：`/<service-name>` -> `PORT`
+  - 前端基础路径：`/${SERVICE_NAME}`
 - 其他环境变量：通过 Koyeb Secrets 配置（如 API keys、数据库连接等）
 
 ### 部署脚本（可选）
@@ -370,34 +413,34 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 如果使用 Koyeb，可以使用 `scripts/deploy_koyeb.py` 自动部署：
 
 ```bash
-# 基本用法（service-name 是必需的）
-python scripts/deploy_koyeb.py --service-name your-service-name
+# 基本用法（从 .env 文件读取 SERVICE_NAME）
+python scripts/deploy_koyeb.py
 
 # 查看所有应用和服务
 python scripts/deploy_koyeb.py --list
 ```
 
 脚本会自动：
+- 从 `.env` 文件读取 `SERVICE_NAME`（**必需**，如果未设置会报错）
+- **检查服务名称是否规范化**：如果未规范化，会停止部署并提示修改 `.env` 文件
 - 创建或更新 Koyeb 应用和服务（app 名称硬编码为 `ai-builders`）
 - 配置 Git 仓库连接（格式：`github.com/<org>/<repo>`）
 - **自动配置 Docker 构建**：在 `git` 对象内添加 `docker` 字段，使用 Dockerfile
-- **自动配置子路径部署**：计算前端基础路径（`BASE_PATH`），基于服务名称或路由配置
+- **自动配置子路径部署**：计算前端基础路径 `BASE_PATH=/${SERVICE_NAME}` 并设置为环境变量
 - 设置环境变量和 Secrets（包括 `BASE_PATH` 环境变量）
 - 使用 nano 实例类型和 na 区域（可配置）
-- **自动配置路由**：`/<service-name>` -> `PORT`
-- **自动规范化服务名称**：将下划线转换为连字符，转小写
+- **自动配置路由**：`/${SERVICE_NAME}` -> `PORT`
 
 **子路径部署说明：**
-- Koyeb 默认将服务部署在 `/<service-name>` 路径下
-- 部署脚本会自动计算 `BASE_PATH=/<service-name>` 并设置为环境变量
-- Dockerfile 会在构建时读取 `BASE_PATH` 环境变量，传递给 Vite 构建
-- 如果 `BASE_PATH` 在构建时不可用，会使用相对路径 `./`（可能导致子路径部署时资源加载失败）
+- Koyeb 默认将服务部署在 `/${SERVICE_NAME}` 路径下
+- 部署脚本会自动计算 `BASE_PATH=/${SERVICE_NAME}` 并设置为环境变量
+- Vite 构建时会从 `.env` 文件读取 `SERVICE_NAME`，自动计算基础路径
+- 前端和后端配置统一，都从同一个 `.env` 文件读取
 
 ### 部署脚本参数
 
 ```bash
 python scripts/deploy_koyeb.py \
-  --service-name your-service-name \  # 必需：服务名称（会自动规范化）
   --repo https://github.com/your-org/your-repo \  # 可选：GitHub 仓库 URL
   --branch master \  # 可选：Git 分支（默认：master）
   --port 8001 \  # 可选：应用端口（默认：8001）
@@ -405,18 +448,20 @@ python scripts/deploy_koyeb.py \
 ```
 
 **重要说明**：
-- `--service-name`：**必需参数**。服务名称会自动规范化：
-  - 下划线（`_`）会被转换为连字符（`-`）
-  - 自动转换为小写
-  - 移除无效字符
-  - 例如：`test_service` → `test-service`
+- `SERVICE_NAME`：**必须**在 `.env` 文件中设置，不能通过命令行参数指定
+- 服务名称要求：
+  - 只能包含小写字母、数字和连字符（`-`）
+  - 不能包含下划线（`_`）
+  - 不能以连字符开头或结尾
+  - 例如：`test-service` ✅，`test_service` ❌，`-test-service` ❌
+- 如果服务名称未规范化，脚本会停止并提示修改 `.env` 文件
 - `--app-name`：已硬编码为 `ai-builders`，无需指定
-- **自动路由配置**：脚本会自动创建路由 `/<service-name>` -> `PORT`
-  - 例如：如果 service-name 是 `my-service`，端口是 `8001`
+- **自动路由配置**：脚本会自动创建路由 `/${SERVICE_NAME}` -> `PORT`
+  - 例如：如果 `SERVICE_NAME=my-service`，端口是 `8001`
   - 会自动配置路由 `/my-service` -> `8001`
 - 脚本默认会自动引用 `OPENAI_API_KEY` Secret（如果存在）
 - 如果需要引用其他 Secrets，使用 `--secret-ref` 参数
-- 使用 `--list` 选项可以查看所有应用和服务，不需要提供 `--service-name`
+- 使用 `--list` 选项可以查看所有应用和服务，不需要设置 `SERVICE_NAME`
 
 ### Koyeb API 配置要点
 
@@ -448,7 +493,8 @@ python scripts/deploy_koyeb.py \
 6. **服务名称格式**：只能包含小写字母、数字和连字符（hyphen）
    - 不能包含下划线（underscore）
    - 不能以连字符开头或结尾
-   - 部署脚本会自动规范化服务名称
+   - 部署脚本会检查服务名称是否规范化，未规范化则停止部署
+   - 服务名称必须在 `.env` 文件中设置，不能通过命令行参数指定
 
 ## 本地测试步骤
 
