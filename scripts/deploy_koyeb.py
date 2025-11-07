@@ -251,28 +251,12 @@ def deploy(
             for secret_name in secret_refs:
                 env_config.append({"key": secret_name, "value": f"@{secret_name}"})
         
-        # 构建路由配置（如果没有提供，则使用默认路由：/<service_name> -> port）
-        routes_config = routes
-        if routes_config is None:
-            # 默认路由：/<service_name> -> port
-            routes_config = [
-                {
-                    "port": port,
-                    "path": f"/{service_name}"
-                }
-            ]
-        
-        # 计算前端基础路径（用于子路径部署）
-        # 从路由配置中提取路径，如果没有路由或路径是根路径，则使用服务名称
-        base_path = f"/{service_name}"  # 默认使用服务名称作为基础路径
-        if routes_config and len(routes_config) > 0:
-            route_path = routes_config[0].get("path", "")
-            if route_path and route_path != "/":
-                base_path = route_path
+        # 注意：routes_config 和 base_path 已经在函数开头计算过了（第 145-162 行）
+        # 这里直接使用之前计算的值，不需要重新计算
         
         # 添加 BASE_PATH 和 SERVICE_NAME 到环境变量（用于 Docker 构建和运行时）
-        # SERVICE_NAME 用于 Vite 构建时设置 base path
-        # BASE_PATH 用于运行时环境变量
+        # SERVICE_NAME 用于 Vite 构建时设置 base path（但前端已硬编码，此变量主要用于后端）
+        # BASE_PATH 用于运行时环境变量（后端 main.py 会使用此变量处理子路径请求）
         env_config.append({"key": "BASE_PATH", "value": base_path})
         env_config.append({"key": "SERVICE_NAME", "value": service_name})
 

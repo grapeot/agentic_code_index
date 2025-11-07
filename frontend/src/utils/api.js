@@ -3,7 +3,9 @@
 
 // Get base path from Vite's import.meta.env.BASE_URL
 // BASE_URL is set by Vite based on the base config (e.g., '/service-name/')
-const BASE_URL = import.meta.env.BASE_URL || '/'
+// 硬编码部署路径（如果已知）
+const HARDCODED_BASE_PATH = '/code-index'  // 部署路径，如果已知可以硬编码
+const BASE_URL = HARDCODED_BASE_PATH ? `${HARDCODED_BASE_PATH}/` : (import.meta.env.BASE_URL || '/')
 
 // Helper function to build API URL
 export function apiUrl(path) {

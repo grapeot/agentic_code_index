@@ -27,8 +27,11 @@ function loadEnvFromRoot() {
 
 // 从环境变量或 .env 文件中的 SERVICE_NAME 计算基础路径
 // 优先级：构建时环境变量 > .env 文件
+// 硬编码部署路径（如果已知）
+const HARDCODED_BASE_PATH = '/code-index'  // 部署路径，如果已知可以硬编码
+
 const serviceName = process.env.SERVICE_NAME || loadEnvFromRoot().SERVICE_NAME || ''
-const basePath = serviceName ? `/${serviceName}` : ''
+const basePath = HARDCODED_BASE_PATH || (serviceName ? `/${serviceName}` : '')
 
 // 调试输出
 if (process.env.NODE_ENV !== 'production' || basePath) {
