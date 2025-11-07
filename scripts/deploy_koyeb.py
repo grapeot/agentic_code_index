@@ -133,6 +133,9 @@ def deploy(
         "Content-Type": "application/json",
     }
 
+    # 用于保存最后一个请求的 payload，以便错误时显示
+    last_request_payload = None
+
     try:
         # 1. 检查或创建应用
         print("检查应用是否存在...")
@@ -182,10 +185,18 @@ def deploy(
                 print(f"✓ 服务已存在: {service_id}")
                 break
 
-        # 构建 Git 仓库 URL
-        git_repo_url = repo
-        if not git_repo_url.startswith("http"):
-            git_repo_url = f"https://github.com/{repo}"
+        # 构建 Git 仓库 URL（Koyeb API 需要 github.com/<org>/<repo> 格式）
+        if repo.startswith("http://") or repo.startswith("https://"):
+            # 从完整 URL 中提取 github.com/<org>/<repo>
+            if "github.com/" in repo:
+                git_repo_url = repo.split("github.com/")[-1].rstrip("/")
+                if not git_repo_url.startswith("github.com/"):
+                    git_repo_url = f"github.com/{git_repo_url}"
+            else:
+                git_repo_url = repo
+        else:
+            # 已经是 <org>/<repo> 格式
+            git_repo_url = f"github.com/{repo}" if "/" in repo else repo
 
         # 构建环境变量配置（引用 Secrets）
         env_config = []
@@ -197,7 +208,6 @@ def deploy(
         if not service_id:
             print(f"创建服务: {service_name}...")
             service_payload = {
-                "name": service_name,
                 "app_id": app_id,
                 "definition": {
                     "name": service_name,
@@ -212,21 +222,25 @@ def deploy(
                             "protocol": "HTTP",
                         }
                     ],
-                    "regions": ["fra"],  # 默认使用法兰克福区域
+                    "regions": ["na"],
                     "instance_types": [
                         {
-                            "type": "micro"
+                            "type": "nano"
                         }
                     ],
-                    "scalings": {
-                        "min": 1,
-                        "max": 1
-                    },
+                    "scalings": [
+                        {
+                            "min": 1,
+                            "max": 1
+                        }
+                    ],
                 },
             }
             # 添加环境变量配置（引用 Secrets）
             if env_config:
                 service_payload["definition"]["env"] = env_config
+            # 保存请求 payload 以便错误时显示
+            last_request_payload = service_payload
             create_service_resp = httpx.post(
                 f"{KOYEB_API_BASE}/services",
                 headers=headers,
@@ -242,10 +256,30 @@ def deploy(
             # 更新服务（触发重新部署）
             update_payload = {
                 "definition": {
+                    "name": service_name,
+                    "type": "WEB_SERVICE",
                     "git": {
                         "repository": git_repo_url,
                         "branch": branch,
                     },
+                    "ports": [
+                        {
+                            "port": port,
+                            "protocol": "HTTP",
+                        }
+                    ],
+                    "regions": ["na"],
+                    "instance_types": [
+                        {
+                            "type": "nano"
+                        }
+                    ],
+                    "scalings": [
+                        {
+                            "min": 1,
+                            "max": 1
+                        }
+                    ],
                 },
             }
             # 添加环境变量配置（引用 Secrets）
@@ -270,12 +304,40 @@ def deploy(
         return True
 
     except httpx.HTTPStatusError as e:
+        print(f"\n{'='*60}")
         print(f"HTTP 错误: {e.response.status_code}")
+        print(f"{'='*60}")
+        
+        if e.request:
+            print(f"\n请求信息:")
+            print(f"  URL: {e.request.url}")
+            print(f"  方法: {e.request.method}")
+            # 尝试显示请求体（优先使用保存的 payload，否则尝试从 request 中获取）
+            if last_request_payload:
+                print(f"  请求体:")
+                print(json.dumps(last_request_payload, indent=4, ensure_ascii=False))
+            elif hasattr(e.request, 'content') and e.request.content:
+                try:
+                    request_body = json.loads(e.request.content)
+                    print(f"  请求体:")
+                    print(json.dumps(request_body, indent=4, ensure_ascii=False))
+                except:
+                    content_preview = str(e.request.content)[:500]
+                    print(f"  请求体: {content_preview}")
+        
+        print(f"\n响应信息:")
+        print(f"  状态码: {e.response.status_code}")
+        print(f"  Headers: {dict(e.response.headers)}")
+        print(f"  响应内容:")
         try:
             error_data = e.response.json()
-            print(f"错误详情: {json.dumps(error_data, indent=2, ensure_ascii=False)}")
+            print(json.dumps(error_data, indent=2, ensure_ascii=False))
         except:
-            print(f"响应内容: {e.response.text}")
+            response_text = e.response.text
+            print(f"  {response_text[:1000]}")
+            if len(response_text) > 1000:
+                print(f"  ... (响应内容过长，已截断)")
+        print(f"{'='*60}\n")
         return False
     except Exception as e:
         print(f"错误: {e}")
