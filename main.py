@@ -232,48 +232,17 @@ logger = logging.getLogger(__name__)
 
 # Serve frontend static files if they exist (must be after all API routes)
 frontend_dist = Path("frontend/dist")
-logger.info(f"🔍 Checking frontend directory: {frontend_dist.absolute()}")
-logger.info(f"   Exists: {frontend_dist.exists()}")
-logger.info(f"   Is directory: {frontend_dist.exists() and frontend_dist.is_dir()}")
 
 if frontend_dist.exists():
-    # List contents for debugging
-    try:
-        contents = list(frontend_dist.iterdir())
-        logger.info(f"📁 Frontend dist contents: {[item.name for item in contents]}")
-        
-        # Check for index.html
-        index_file = frontend_dist / "index.html"
-        logger.info(f"   index.html exists: {index_file.exists()}")
-        
-        # Check for assets directory
-        assets_dir = frontend_dist / "assets"
-        logger.info(f"   assets directory exists: {assets_dir.exists()}")
-        if assets_dir.exists():
-            assets_files = list(assets_dir.iterdir())
-            logger.info(f"   assets files: {[f.name for f in assets_files[:10]]}")  # Show first 10
-    except Exception as e:
-        logger.error(f"❌ Error listing frontend dist: {e}")
-    
     # Mount static assets
     assets_dir = frontend_dist / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-        logger.info(f"✅ Mounted /assets from {assets_dir.absolute()}")
-    else:
-        logger.warning(f"⚠️  Assets directory not found: {assets_dir.absolute()}")
     
     @app.get("/")
     async def serve_frontend_root(request: Request):
         """Serve frontend index.html for root path."""
-        logger.info("🌐 GET / - Serving frontend root")
-        logger.info(f"   Request URL: {request.url}")
-        logger.info(f"   Request path: {request.url.path}")
-        logger.info(f"   Headers: {dict(request.headers)}")
-        
         index_file = frontend_dist / "index.html"
-        logger.info(f"   Checking: {index_file.absolute()}")
-        logger.info(f"   Exists: {index_file.exists()}")
         
         if index_file.exists():
             # Read HTML content
@@ -286,68 +255,44 @@ if frontend_dist.exists():
             forwarded_path = request.headers.get("X-Forwarded-Path") or request.headers.get("X-Original-Path")
             if forwarded_path:
                 base_path = forwarded_path.rstrip('/')
-                logger.info(f"   Found base_path from header: {base_path}")
             
             # 2. Check request URL host/path (might contain service name)
-            # If URL contains the service name in the path, extract it
             if not base_path:
-                # Check if there's a service path in the URL
-                # Koyeb routes like /test-service -> PORT, so the original path might be in headers
-                # Or we can check the Host header
                 host = request.headers.get("Host", "")
                 if "koyeb.app" in host:
-                    # Extract service name from host or path
-                    # For now, try to get it from BASE_PATH env var (runtime)
                     env_base_path = os.getenv("BASE_PATH", "")
                     if env_base_path:
                         base_path = env_base_path.rstrip('/')
-                        logger.info(f"   Found base_path from env: {base_path}")
             
             # 3. If still no base_path, check if request path is not root
             if not base_path:
                 request_path = request.url.path.rstrip('/')
                 if request_path and request_path != '/':
                     base_path = request_path
-                    logger.info(f"   Using request path as base_path: {base_path}")
             
             if base_path:
                 # Replace absolute paths with base path
                 html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
                 html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
-                logger.info(f"   Updated HTML paths with base_path: {base_path}")
-                # Extract sample paths for logging (avoid backslash in f-string)
-                sample_paths = re.findall(r'(href|src)="[^"]*"', html_content)[:3]
-                logger.info(f"   Sample paths: {sample_paths}")
             
-            logger.info("✅ Serving index.html")
             return HTMLResponse(content=html_content)
         else:
-            logger.error(f"❌ index.html not found at {index_file.absolute()}")
-            raise HTTPException(status_code=404, detail=f"Frontend not found at {index_file.absolute()}")
+            raise HTTPException(status_code=404, detail="Frontend not found")
     
     @app.get("/{path:path}")
     async def serve_frontend(path: str, request: Request):
         """Serve frontend files, fallback to index.html for SPA routing."""
-        logger.info(f"🌐 GET /{path} - Serving frontend path")
-        
         # Skip API routes and docs
         if path.startswith(("api/", "docs", "openapi.json")):
-            logger.info(f"   Skipping (API route): {path}")
             raise HTTPException(status_code=404)
         
         file_path = frontend_dist / path
-        logger.info(f"   Checking file: {file_path.absolute()}")
-        logger.info(f"   Exists: {file_path.exists()}")
-        logger.info(f"   Is file: {file_path.exists() and file_path.is_file()}")
         
         if file_path.exists() and file_path.is_file():
-            logger.info(f"✅ Serving file: {path}")
             return FileResponse(file_path)
         
         # For SPA routing, return index.html
         index_file = frontend_dist / "index.html"
-        logger.info(f"   Fallback to index.html: {index_file.absolute()}")
-        logger.info(f"   index.html exists: {index_file.exists()}")
         
         if index_file.exists():
             # Read HTML content
@@ -360,14 +305,12 @@ if frontend_dist.exists():
             forwarded_path = request.headers.get("X-Forwarded-Path") or request.headers.get("X-Original-Path")
             if forwarded_path:
                 base_path = forwarded_path.rstrip('/')
-                logger.info(f"   Found base_path from header: {base_path}")
             
             # 2. Check BASE_PATH env var (set by deploy script)
             if not base_path:
                 env_base_path = os.getenv("BASE_PATH", "")
                 if env_base_path:
                     base_path = env_base_path.rstrip('/')
-                    logger.info(f"   Found base_path from env: {base_path}")
             
             # 3. Check request URL path
             if not base_path:
@@ -377,51 +320,28 @@ if frontend_dist.exists():
                     path_parts = [p for p in request_path.split('/') if p]
                     if len(path_parts) == 1 and not path_parts[0].endswith(('.html', '.js', '.css', '.png', '.jpg', '.svg')):
                         base_path = request_path
-                        logger.info(f"   Detected base_path from request path: {base_path}")
             
             if base_path:
                 # Replace absolute paths with base path
                 html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
                 html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
-                logger.info(f"   Updated HTML paths with base_path: {base_path}")
-                # Extract sample paths for logging (avoid backslash in f-string)
-                sample_paths = re.findall(r'(href|src)="[^"]*"', html_content)[:3]
-                logger.info(f"   Sample paths: {sample_paths}")
             
-            logger.info(f"✅ Serving index.html (SPA fallback) for path: {path}")
             return HTMLResponse(content=html_content)
         
-        logger.error(f"❌ Neither file nor index.html found for path: {path}")
         raise HTTPException(status_code=404, detail=f"File not found: {path}")
 else:
-    logger.error(f"❌ Frontend dist directory does not exist: {frontend_dist.absolute()}")
-    logger.error(f"   Current working directory: {os.getcwd()}")
-    logger.error(f"   Listing current directory: {os.listdir('.')}")
-    if Path("frontend").exists():
-        logger.error(f"   frontend/ exists, contents: {os.listdir('frontend')}")
-    
     # Register root route even if frontend doesn't exist, so we can show helpful error
     @app.get("/")
     async def serve_frontend_root_missing():
         """Serve error message when frontend is not found."""
-        logger.error("❌ GET / - Frontend dist directory does not exist")
-        logger.error(f"   Expected path: {frontend_dist.absolute()}")
-        logger.error(f"   Current working directory: {os.getcwd()}")
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Frontend not found. Expected at {frontend_dist.absolute()}. Current dir: {os.getcwd()}"
-        )
+        raise HTTPException(status_code=404, detail="Frontend not found")
     
     @app.get("/{path:path}")
     async def serve_frontend_missing(path: str):
         """Serve error message when frontend is not found."""
         if path.startswith(("api/", "docs", "openapi.json")):
             raise HTTPException(status_code=404)
-        logger.error(f"❌ GET /{path} - Frontend dist directory does not exist")
-        raise HTTPException(
-            status_code=404,
-            detail=f"Frontend not found. Expected at {frontend_dist.absolute()}"
-        )
+        raise HTTPException(status_code=404, detail="Frontend not found")
 
 
 if __name__ == "__main__":

@@ -33,13 +33,6 @@ const HARDCODED_BASE_PATH = '/code-index'  // 部署路径，如果已知可以�
 const serviceName = process.env.SERVICE_NAME || loadEnvFromRoot().SERVICE_NAME || ''
 const basePath = HARDCODED_BASE_PATH || (serviceName ? `/${serviceName}` : '')
 
-// 调试输出
-if (process.env.NODE_ENV !== 'production' || basePath) {
-  console.log(`[Vite Config] SERVICE_NAME from .env: ${serviceName || 'not set'}`)
-  console.log(`[Vite Config] Final basePath: "${basePath}"`)
-  console.log(`[Vite Config] Final base config: "${basePath ? `${basePath}/` : './'}"`)
-}
-
 export default defineConfig({
   plugins: [react()],
   server: {

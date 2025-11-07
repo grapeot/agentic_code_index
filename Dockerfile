@@ -25,22 +25,12 @@ COPY frontend/ .
 # 构建前端
 # SERVICE_NAME 通过 ARG 或环境变量传递，用于设置 Vite 的 base path
 RUN if [ -f package.json ]; then \
-      echo "Building frontend..." && \
-      echo "SERVICE_NAME from ARG: ${SERVICE_NAME:-not set}" && \
-      echo "SERVICE_NAME from ENV: $SERVICE_NAME" && \
-      SERVICE_NAME=${SERVICE_NAME:-$SERVICE_NAME} npm run build && \
-      echo "Build completed. Checking dist directory..." && \
-      ls -la dist/ && \
-      if [ -f dist/index.html ]; then \
-        echo "✅ index.html found"; \
-        echo "Checking index.html for base path..." && \
-        head -20 dist/index.html | grep -E '(base|href|src)' || echo "No base path found in HTML"; \
-      else \
+      SERVICE_NAME=${SERVICE_NAME:-$SERVICE_NAME} npm run build; \
+      if [ ! -f dist/index.html ]; then \
         echo "❌ ERROR: index.html not found after build!"; \
         exit 1; \
       fi; \
     else \
-      echo "No package.json found, skipping build"; \
       mkdir -p dist && echo "<html><body>Frontend not built</body></html>" > dist/index.html; \
     fi
 
@@ -60,19 +50,8 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # 验证前端文件已复制
-RUN echo "Verifying frontend files..." && \
-    ls -la frontend/ && \
-    if [ -d frontend/dist ]; then \
-      echo "✅ frontend/dist exists" && \
-      ls -la frontend/dist/ && \
-      if [ -f frontend/dist/index.html ]; then \
-        echo "✅ frontend/dist/index.html exists"; \
-      else \
-        echo "❌ ERROR: frontend/dist/index.html not found!"; \
-        exit 1; \
-      fi; \
-    else \
-      echo "❌ ERROR: frontend/dist directory not found!"; \
+RUN if [ ! -d frontend/dist ] || [ ! -f frontend/dist/index.html ]; then \
+      echo "❌ ERROR: frontend/dist/index.html not found!"; \
       exit 1; \
     fi
 
