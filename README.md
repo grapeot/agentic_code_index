@@ -2,12 +2,31 @@
 
 这是一个用于验证 Agentic 代码索引系统技术可行性的最小可行产品（MVP）。
 
+## 演示视频
+
+<video width="650" controls>
+  <source src="docs/screenshot.mp4" type="video/mp4">
+  您的浏览器不支持视频标签。
+</video>
+
 ## 功能特性
 
 - ✅ Agent 多轮工具调用（cat, ls, find）
 - ✅ OpenAI GPT-5-mini 模型支持
 - ✅ Pydantic 结构化输出强制
 - ✅ FastAPI 服务接口
+
+## 关键设计决策
+
+本项目的核心设计遵循以下关键决策（详细设计文档请参考 [设计文档](docs/design.md)）：
+
+- **双层索引结构**: 采用文件索引和函数索引的分离式设计，赋予查询 Agent 控制信息粒度的能力，支持从宏观到微观的多层次代码探索
+- **LLM 驱动的代码结构解析**: 使用 LLM 识别函数边界，提供比传统解析器更强的灵活性，可处理语法不完整或非标准的代码片段
+- **FAISS IndexFlatL2 向量搜索**: 选择精确的 L2 距离计算索引，保证 100% 召回率，适合中小型代码库，未来可平滑过渡到近似最近邻索引
+- **OpenAI text-embedding-3-small**: 在性能和成本之间取得平衡的主流 embedding 模型选择
+- **FastAPI + Pydantic 结构化输出**: 利用 OpenAI 的结构化输出功能，通过 Pydantic Schema 强制保证 Agent 输出的可靠性和类型安全
+
+更多设计细节、架构图和实现原理，请参阅 [设计文档](docs/design.md)。
 
 ## 安装
 
