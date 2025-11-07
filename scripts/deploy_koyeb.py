@@ -311,15 +311,27 @@ def deploy(
         env_config = []
         if secret_refs:
             # 验证 Secret 是否存在，然后使用插值语法引用
+            missing_secrets = []
             for secret_name in secret_refs:
                 secret_id = get_or_create_secret(api_key, secret_name)
                 if secret_id:
                     # Koyeb API 使用插值语法 {{ secret.SECRET_NAME }} 引用 Secret
+                    # 注意：格式必须是 {{ secret.SECRET_NAME }}，中间有空格
                     env_config.append({"key": secret_name, "value": f"{{{{ secret.{secret_name} }}}}"})
                     print(f"✓ 配置环境变量 {secret_name} 引用 Secret: {secret_name} (ID: {secret_id})")
                 else:
-                    print(f"⚠️  警告: Secret '{secret_name}' 不存在，跳过环境变量配置")
-                    print(f"   请在 Koyeb 控制台创建 Secret '{secret_name}'")
+                    missing_secrets.append(secret_name)
+            
+            # 如果 Secret 不存在，报错并停止部署
+            if missing_secrets:
+                print(f"\n❌ 错误: 以下 Secrets 不存在，无法继续部署:")
+                for secret_name in missing_secrets:
+                    print(f"   - {secret_name}")
+                print(f"\n请在 Koyeb 控制台创建这些 Secrets:")
+                print(f"   1. 访问 https://app.koyeb.com/secrets")
+                print(f"   2. 点击 'Add secret'")
+                print(f"   3. 输入 Secret 名称和值")
+                return False
         
         # 注意：routes_config 和 base_path 已经在函数开头计算过了（第 145-162 行）
         # 这里直接使用之前计算的值，不需要重新计算
@@ -371,7 +383,7 @@ def deploy(
             # 添加环境变量配置（引用 Secrets）
             if env_config:
                 service_payload["definition"]["env"] = env_config
-                print(f"📋 环境变量配置:")
+                print(f"\n📋 环境变量配置 (共 {len(env_config)} 个):")
                 for env_var in env_config:
                     value = env_var.get('value', '')
                     # 检查是否是 Secret 引用（包含 {{ secret.xxx }}）
@@ -379,6 +391,8 @@ def deploy(
                         print(f"   {env_var['key']} = {value} (Secret 引用)")
                     else:
                         print(f"   {env_var['key']} = {value}")
+                print(f"\n完整 env 配置 JSON:")
+                print(json.dumps(env_config, indent=2, ensure_ascii=False))
             # 保存请求 payload 以便错误时显示
             last_request_payload = service_payload
             create_service_resp = httpx.post(
