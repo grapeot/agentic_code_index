@@ -267,6 +267,10 @@ if frontend_dist.exists():
     async def serve_frontend_root(request: Request):
         """Serve frontend index.html for root path."""
         logger.info("🌐 GET / - Serving frontend root")
+        logger.info(f"   Request URL: {request.url}")
+        logger.info(f"   Request path: {request.url.path}")
+        logger.info(f"   Headers: {dict(request.headers)}")
+        
         index_file = frontend_dist / "index.html"
         logger.info(f"   Checking: {index_file.absolute()}")
         logger.info(f"   Exists: {index_file.exists()}")
@@ -275,13 +279,43 @@ if frontend_dist.exists():
             # Read HTML content
             html_content = index_file.read_text(encoding='utf-8')
             
-            # Get base path from request URL
-            base_path = request.url.path.rstrip('/')
-            if base_path and base_path != '/':
+            # Try to get base path from various sources
+            base_path = ""
+            
+            # 1. Check X-Forwarded-Path header (Koyeb might set this)
+            forwarded_path = request.headers.get("X-Forwarded-Path") or request.headers.get("X-Original-Path")
+            if forwarded_path:
+                base_path = forwarded_path.rstrip('/')
+                logger.info(f"   Found base_path from header: {base_path}")
+            
+            # 2. Check request URL host/path (might contain service name)
+            # If URL contains the service name in the path, extract it
+            if not base_path:
+                # Check if there's a service path in the URL
+                # Koyeb routes like /test-service -> PORT, so the original path might be in headers
+                # Or we can check the Host header
+                host = request.headers.get("Host", "")
+                if "koyeb.app" in host:
+                    # Extract service name from host or path
+                    # For now, try to get it from BASE_PATH env var (runtime)
+                    env_base_path = os.getenv("BASE_PATH", "")
+                    if env_base_path:
+                        base_path = env_base_path.rstrip('/')
+                        logger.info(f"   Found base_path from env: {base_path}")
+            
+            # 3. If still no base_path, check if request path is not root
+            if not base_path:
+                request_path = request.url.path.rstrip('/')
+                if request_path and request_path != '/':
+                    base_path = request_path
+                    logger.info(f"   Using request path as base_path: {base_path}")
+            
+            if base_path:
                 # Replace absolute paths with base path
                 html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
                 html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
                 logger.info(f"   Updated HTML paths with base_path: {base_path}")
+                logger.info(f"   Sample paths: {re.findall(r'(href|src)=\"[^\"]*\"', html_content)[:3]}")
             
             logger.info("✅ Serving index.html")
             return HTMLResponse(content=html_content)
@@ -317,25 +351,38 @@ if frontend_dist.exists():
             # Read HTML content
             html_content = index_file.read_text(encoding='utf-8')
             
-            # Get base path from request URL
-            # Koyeb routes like /test-service -> PORT, so the request path might be /test-service
-            # We need to extract the base path from the full request URL
-            request_path = request.url.path.rstrip('/')
-            
-            # If request path is not root and doesn't look like a file path, use it as base path
+            # Try to get base path from various sources
             base_path = ""
-            if request_path and request_path != '/' and not request_path.startswith(('/api', '/docs', '/openapi.json', '/assets')):
-                # Check if this looks like a service path (single segment, not a file)
-                path_parts = [p for p in request_path.split('/') if p]
-                if len(path_parts) == 1 and not path_parts[0].endswith(('.html', '.js', '.css', '.png', '.jpg', '.svg')):
-                    base_path = request_path
-                    logger.info(f"   Detected base_path from request: {base_path}")
+            
+            # 1. Check X-Forwarded-Path header (Koyeb might set this)
+            forwarded_path = request.headers.get("X-Forwarded-Path") or request.headers.get("X-Original-Path")
+            if forwarded_path:
+                base_path = forwarded_path.rstrip('/')
+                logger.info(f"   Found base_path from header: {base_path}")
+            
+            # 2. Check BASE_PATH env var (set by deploy script)
+            if not base_path:
+                env_base_path = os.getenv("BASE_PATH", "")
+                if env_base_path:
+                    base_path = env_base_path.rstrip('/')
+                    logger.info(f"   Found base_path from env: {base_path}")
+            
+            # 3. Check request URL path
+            if not base_path:
+                request_path = request.url.path.rstrip('/')
+                if request_path and request_path != '/' and not request_path.startswith(('/api', '/docs', '/openapi.json', '/assets')):
+                    # Check if this looks like a service path
+                    path_parts = [p for p in request_path.split('/') if p]
+                    if len(path_parts) == 1 and not path_parts[0].endswith(('.html', '.js', '.css', '.png', '.jpg', '.svg')):
+                        base_path = request_path
+                        logger.info(f"   Detected base_path from request path: {base_path}")
             
             if base_path:
                 # Replace absolute paths with base path
                 html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
                 html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
                 logger.info(f"   Updated HTML paths with base_path: {base_path}")
+                logger.info(f"   Sample paths: {re.findall(r'(href|src)=\"[^\"]*\"', html_content)[:3]}")
             
             logger.info(f"✅ Serving index.html (SPA fallback) for path: {path}")
             return HTMLResponse(content=html_content)
