@@ -52,3 +52,5 @@ frontend/node_modules/
 frontend/dist/
 test_index/
 index_data/
+self_index/*.faiss
+self_index/metadata.json

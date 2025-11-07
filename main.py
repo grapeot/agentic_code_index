@@ -5,11 +5,11 @@ from typing import Optional
 from contextlib import asynccontextmanager
 import os
 
-from agent import Agent
-from models import FinalAnswer
-from indexing import CodeIndexer
-from search import CodeSearcher
-from tools import set_searcher
+from src.agent import Agent
+from src.models import FinalAnswer
+from src.indexing import CodeIndexer
+from src.search import CodeSearcher
+from src.tools import set_searcher
 
 
 @asynccontextmanager
@@ -88,7 +88,7 @@ async def health():
 @app.get("/file")
 async def get_file(file_path: str):
     """Get file content."""
-    from tools import cat_file
+    from src.tools import cat_file
     
     result = cat_file(file_path)
     

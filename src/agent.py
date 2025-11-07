@@ -6,8 +6,8 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from pydantic import ValidationError
 
-from models import FinalAnswer
-from tools import TOOLS
+from src.models import FinalAnswer
+from src.tools import TOOLS
 
 # Set up logging
 logging.basicConfig(

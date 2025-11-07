@@ -8,7 +8,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from indexing import CodeIndexer
+from src.indexing import CodeIndexer
 
 # Configure detailed logging
 logging.basicConfig(

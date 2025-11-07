@@ -82,16 +82,25 @@ python tests/test_mvp.py
 
 ```
 .
-├── main.py           # FastAPI 服务入口
-├── agent.py          # Agent 核心逻辑
-├── tools.py          # 工具函数（cat, ls, find）
-├── models.py         # Pydantic 数据模型
-├── tests/            # 测试脚本目录
-│   ├── test_mvp.py   # MVP 测试脚本
-│   ├── test_index.py # 索引测试脚本
+├── main.py              # FastAPI 服务入口
+├── src/                 # 源代码目录
+│   ├── agent.py         # Agent 核心逻辑
+│   ├── indexing.py      # 代码索引服务
+│   ├── search.py        # 代码搜索服务
+│   ├── tools.py         # 工具函数（cat, ls, find）
+│   └── models.py        # Pydantic 数据模型
+├── frontend/            # React 前端应用
+│   ├── src/             # 前端源代码
 │   └── ...
-├── requirements.txt  # 依赖列表
-└── README.md         # 本文件
+├── tests/               # 测试脚本目录
+│   ├── test_mvp.py      # MVP 测试脚本
+│   ├── test_index.py    # 索引测试脚本
+│   └── ...
+├── self_index/          # 示例索引数据
+├── docs/                # 文档
+├── requirements.txt     # Python 依赖列表
+├── launch_backend.sh    # 后端启动脚本
+└── README.md            # 本文件
 ```
 
 ## 核心流程

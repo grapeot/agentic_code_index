@@ -8,9 +8,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Test if we can import (will fail if dependencies not installed)
 try:
-    from agent import Agent
-    from models import FinalAnswer
-    from tools import cat_file, ls_directory, find_files
+    from src.agent import Agent
+    from src.models import FinalAnswer
+    from src.tools import cat_file, ls_directory, find_files
     print("✓ All imports successful")
 except ImportError as e:
     print(f"✗ Import failed: {e}")
