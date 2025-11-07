@@ -23,22 +23,57 @@
 - FastAPI 同时服务 API 请求和静态文件
 - 生产环境中，所有请求通过同一个服务处理
 
-## 当前项目结构
+## 典型项目结构
 
-- 后端：FastAPI（`main.py`）
-- 前端：React + Vite（`frontend/` 目录）
-- 构建工具：Vite
-- 部署目标：Docker + Koyeb（或其他 PaaS）
+假设你的项目结构如下（可根据实际情况调整）：
 
-## 需要修改的文件
+```
+your-project/
+├── main.py                 # FastAPI 后端入口（文件名可自定义）
+├── requirements.txt         # Python 依赖
+├── Dockerfile              # Docker 构建配置
+├── Procfile                # PaaS 运行命令（可选）
+├── .dockerignore           # Docker 忽略文件
+├── frontend/               # 前端目录（目录名可自定义）
+│   ├── src/
+│   ├── package.json
+│   ├── vite.config.js      # Vite 配置
+│   └── dist/               # 构建输出（自动生成，目录名取决于构建工具）
+└── scripts/                # 脚本目录（可选）
+    └── deploy_koyeb.py     # Koyeb 部署脚本（可选，仅用于 Koyeb）
+```
+
+### 适配不同项目结构
+
+如果你的项目结构不同，需要相应调整：
+
+1. **前端目录名不同**（例如 `client/`、`web/`、`ui/`）：
+   - 修改 `main.py` 中的 `frontend_dist = Path("frontend/dist")` 为你的目录名
+   - 修改 `Dockerfile` 中的 `COPY frontend/` 路径
+   - 修改 `vite.config.js` 的路径（如果配置文件位置不同）
+
+2. **前端在根目录**（不是子目录）：
+   - 修改 `main.py` 中的路径为 `Path("dist")`
+   - 修改 `Dockerfile`，移除 `frontend/` 前缀
+   - 调整构建脚本路径
+
+3. **后端入口文件不同**（例如 `app.py`、`server.py`）：
+   - 修改 `Procfile` 中的 `main:app` 为 `your-file:app`
+   - 修改 `Dockerfile` CMD 中的模块名
+
+4. **构建输出目录不同**（例如 `build/`、`public/`）：
+   - 修改 `main.py` 中的 `dist` 为你的输出目录名
+   - 修改 `Dockerfile` 中的复制路径
+
+## 需要修改/创建的文件
 
 1. `frontend/vite.config.js` - 配置构建输出和开发代理
 2. `main.py` - 添加静态文件服务和 API 路由前缀
 3. `Dockerfile` - 多阶段构建，包含前端构建步骤
 4. `frontend/src/**` - API 调用统一使用 `/api` 前缀
-5. `Procfile` - 定义运行命令（用于 Koyeb 等 PaaS 平台）
-6. `scripts/deploy_koyeb.py` - Koyeb 部署脚本（可选）
-7. `.dockerignore` - 排除不需要的文件
+5. `Procfile` - 定义运行命令（用于 Koyeb/Heroku 等 PaaS 平台）
+6. `.dockerignore` - 排除不需要的文件
+7. `scripts/deploy_koyeb.py` - Koyeb 部署脚本（可选，仅用于 Koyeb）
 
 ## 实施步骤
 
@@ -282,29 +317,38 @@ docs/
 set -e
 
 # 1. 安装 Python 依赖
-source .venv/bin/activate
+# 根据你的虚拟环境调整（.venv、venv、或直接使用系统 Python）
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+elif [ -d "venv" ]; then
+    source venv/bin/activate
+fi
 pip install -r requirements.txt
 
 # 2. 构建前端
+# 根据你的前端目录调整路径
 cd frontend
 npm install
 npm run build
 cd ..
 
 # 3. 启动服务
+# 根据你的入口文件调整（main:app、app:app 等）
 python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
+
+**注意**：根据你的项目结构调整脚本中的路径和命令。
 
 ## Koyeb 部署配置
 
 ### 环境变量
 
 - `PORT`: Koyeb 会自动设置，应用应使用此端口
-- `OPENAI_API_KEY`: 通过 Koyeb Secrets 配置
+- 其他环境变量：通过 Koyeb Secrets 配置（如 API keys、数据库连接等）
 
-### 部署脚本
+### 部署脚本（可选）
 
-使用 `scripts/deploy_koyeb.py` 自动部署：
+如果使用 Koyeb，可以使用 `scripts/deploy_koyeb.py` 自动部署：
 
 ```bash
 python scripts/deploy_koyeb.py
@@ -324,8 +368,13 @@ python scripts/deploy_koyeb.py \
   --app-name your-app-name \
   --branch master \
   --port 8001 \
-  --secret-ref ANOTHER_SECRET
+  --secret-ref YOUR_SECRET_NAME
 ```
+
+**注意**：
+- 脚本默认会自动引用 `OPENAI_API_KEY` Secret（如果存在）。如果需要引用其他 Secrets，使用 `--secret-ref` 参数。
+- 如果不需要自动引用 `OPENAI_API_KEY`，可以修改脚本中的默认行为，或使用 `--secret-ref` 显式指定所有需要的 Secrets。
+- 脚本中的默认值（如应用名、端口、实例类型等）可以根据你的项目需求修改。
 
 ### Koyeb API 配置要点
 
@@ -408,8 +457,11 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 # 构建镜像
 docker build -t your-app-name .
 
-# 运行容器
-docker run -p 8001:8001 -e OPENAI_API_KEY=your-key your-app-name
+# 运行容器（根据你的应用需要设置环境变量）
+docker run -p 8001:8001 \
+  -e PORT=8001 \
+  -e YOUR_API_KEY=your-key \
+  your-app-name
 
 # 访问 http://localhost:8001 验证
 ```
@@ -559,13 +611,20 @@ docker run -p 8001:8001 -e OPENAI_API_KEY=your-key your-app-name
 
 确保前端构建输出到 `frontend/dist`（或相应目录）
 
+**注意**：如果你的前端构建输出目录不同（例如 `frontend/build` 或 `dist`），需要相应修改 `main.py` 中的路径配置。
+
 ### 6. 开发环境代理
 
 使用 Vite/Webpack 的 proxy 功能，开发时无需 CORS
 
 ### 7. 生产环境端口
 
-使用环境变量 `PORT`，Koyeb 等平台会自动设置
+使用环境变量 `PORT`，Koyeb、Heroku 等平台会自动设置
+
+**注意**：默认端口可以根据你的应用调整。如果使用不同的端口，需要修改：
+- `Procfile` 中的端口号
+- `Dockerfile` 中的 `ENV PORT` 和 `CMD` 中的端口
+- `vite.config.js` 中的 proxy target 端口（开发环境）
 
 ## 验证清单
 
@@ -581,7 +640,8 @@ docker run -p 8001:8001 -e OPENAI_API_KEY=your-key your-app-name
 - [ ] Docker 构建成功，镜像包含前端静态文件
 - [ ] Docker 容器运行正常，功能完整
 - [ ] Procfile 已创建并提交到 Git
-- [ ] Koyeb 部署脚本配置正确（如使用）
+- [ ] Koyeb 部署脚本配置正确（如使用 Koyeb）
+- [ ] 所有路径配置与你的项目结构匹配
 
 ## 期望结果
 
@@ -603,12 +663,35 @@ docker run -p 8001:8001 -e OPENAI_API_KEY=your-key your-app-name
 - ✅ **开发友好**：开发环境使用代理，生产环境统一服务
 - ✅ **成本低**：单个服务，资源占用少
 
+## 自定义和扩展
+
+### 修改默认配置
+
+文档中的所有配置都可以根据你的项目需求调整：
+
+1. **端口号**：默认 8001，可以在 `Procfile`、`Dockerfile`、`vite.config.js` 中修改
+2. **API 前缀**：默认 `/api`，可以在 `main.py` 和 `vite.config.js` 中修改
+3. **前端目录**：默认 `frontend/`，需要修改所有相关路径
+4. **构建输出**：默认 `dist/`，需要修改 `main.py` 和 `Dockerfile`
+5. **实例类型和区域**：Koyeb 部署脚本默认使用 `nano` 和 `na`，可以通过修改脚本调整
+
+### 适配其他 PaaS 平台
+
+虽然文档以 Koyeb 为例，但配置同样适用于其他平台：
+
+- **Heroku**：使用 `Procfile`，配置类似
+- **Railway**：支持 Dockerfile，配置相同
+- **Fly.io**：支持 Dockerfile，可能需要额外的配置文件
+- **Render**：支持 Dockerfile 和 Procfile
+- **其他平台**：大多数现代 PaaS 都支持 Dockerfile
+
 ## 注意事项
 
 - **性能**：静态文件由 FastAPI 服务，不是最优性能方案（但对于中小型应用足够）
 - **扩展性**：如需更高性能，可考虑使用 Nginx 反向代理
 - **路径配置**：确保前端构建时使用相对路径（`base: './'`），避免路径问题
 - **环境变量**：生产环境使用环境变量管理配置，不要硬编码
+- **项目特定配置**：文档中的示例需要根据你的实际项目结构调整
 
 ## 相关资源
 
