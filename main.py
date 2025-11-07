@@ -224,11 +224,6 @@ async def query(request: QueryRequest):
 # 注册 API 路由（只使用 /api 前缀，根路径留给前端）
 app.include_router(api_router, prefix="/api", tags=["api"])
 
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
-
 # Serve frontend static files if they exist (must be after all API routes)
 frontend_dist = Path("frontend/dist")
 if frontend_dist.exists():
@@ -259,4 +254,9 @@ if frontend_dist.exists():
             return FileResponse(index_file)
         
         raise HTTPException(status_code=404)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)
 
