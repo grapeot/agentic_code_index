@@ -315,11 +315,6 @@ if frontend_dist.exists():
                 html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
                 html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
                 logger.info(f"   Updated HTML paths with base_path: {base_path}")
-            if base_path:
-                # Replace absolute paths with base path
-                html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
-                html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
-                logger.info(f"   Updated HTML paths with base_path: {base_path}")
                 # Extract sample paths for logging (avoid backslash in f-string)
                 sample_paths = re.findall(r'(href|src)="[^"]*"', html_content)[:3]
                 logger.info(f"   Sample paths: {sample_paths}")
@@ -384,11 +379,6 @@ if frontend_dist.exists():
                         base_path = request_path
                         logger.info(f"   Detected base_path from request path: {base_path}")
             
-            if base_path:
-                # Replace absolute paths with base path
-                html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
-                html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
-                logger.info(f"   Updated HTML paths with base_path: {base_path}")
             if base_path:
                 # Replace absolute paths with base path
                 html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
