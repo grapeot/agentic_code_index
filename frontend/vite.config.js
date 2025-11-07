@@ -1,15 +1,38 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 
-// 获取基础路径：支持子路径部署
-// 通过环境变量 VITE_BASE_PATH 设置（Vite 要求以 VITE_ 开头）
-// 或者通过构建时的环境变量 BASE_PATH（在 Dockerfile 中设置）
-const basePath = process.env.VITE_BASE_PATH || process.env.BASE_PATH || ''
+// 读取 .env 文件（从项目根目录）
+function loadEnvFromRoot() {
+  try {
+    const envPath = resolve(__dirname, '../.env')
+    const envContent = readFileSync(envPath, 'utf-8')
+    const env = {}
+    for (const line of envContent.split('\n')) {
+      const trimmed = line.trim()
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [key, ...valueParts] = trimmed.split('=')
+        if (key && valueParts.length > 0) {
+          env[key.trim()] = valueParts.join('=').trim().replace(/^["']|["']$/g, '')
+        }
+      }
+    }
+    return env
+  } catch (error) {
+    // .env 文件不存在或无法读取，返回空对象
+    return {}
+  }
+}
 
-// 调试输出（仅在构建时）
+// 从 .env 文件中的 SERVICE_NAME 计算基础路径
+const rootEnv = loadEnvFromRoot()
+const serviceName = rootEnv.SERVICE_NAME || ''
+const basePath = serviceName ? `/${serviceName}` : ''
+
+// 调试输出
 if (process.env.NODE_ENV !== 'production' || basePath) {
-  console.log(`[Vite Config] BASE_PATH from env: ${process.env.BASE_PATH || 'not set'}`)
-  console.log(`[Vite Config] VITE_BASE_PATH from env: ${process.env.VITE_BASE_PATH || 'not set'}`)
+  console.log(`[Vite Config] SERVICE_NAME from .env: ${serviceName || 'not set'}`)
   console.log(`[Vite Config] Final basePath: "${basePath}"`)
   console.log(`[Vite Config] Final base config: "${basePath ? `${basePath}/` : './'}"`)
 }
@@ -28,9 +51,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    // 支持子路径部署：通过环境变量设置基础路径
-    // 如果未设置，使用相对路径 './'（适用于根路径部署）
-    // 如果设置了，例如 BASE_PATH=/test-service，则使用 '/test-service/'
+    // 从 .env 文件中的 SERVICE_NAME 计算基础路径
     base: basePath ? `${basePath}/` : './'
   }
 })

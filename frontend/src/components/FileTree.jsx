@@ -16,6 +16,24 @@ function FileTree({ onFileSelect, selectedFile }) {
     try {
       // Get real filesystem tree from backend
       const response = await fetch('/api/file-tree')
+      
+      // Check if response is OK
+      if (!response.ok) {
+        const text = await response.text()
+        console.error('Failed to load file tree:', response.status, text)
+        setTree([])
+        return
+      }
+      
+      // Check content type
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text()
+        console.error('Invalid response type:', contentType, text.substring(0, 200))
+        setTree([])
+        return
+      }
+      
       const data = await response.json()
       
       if (data.error) {
@@ -32,6 +50,10 @@ function FileTree({ onFileSelect, selectedFile }) {
       }
     } catch (error) {
       console.error('Failed to load file tree:', error)
+      // If it's a JSON parse error, log more details
+      if (error instanceof SyntaxError) {
+        console.error('JSON parse error - response might not be JSON')
+      }
       setTree([])
     }
   }

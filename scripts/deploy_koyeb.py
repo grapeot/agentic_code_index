@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """使用 Koyeb REST API 部署 GitHub 仓库到 Koyeb 平台
 
+服务名称从 .env 文件中的 SERVICE_NAME 读取（必须是规范化的名称）。
+
 默认会自动引用 OPENAI_API_KEY Secret 作为环境变量。
 如果需要引用其他 Secrets，可以使用 --secret-ref 参数。
 
 用法:
-    python deploy_koyeb.py [--repo REPO] [--app-name APP_NAME] [--branch BRANCH] [--port PORT]
+    python deploy_koyeb.py [--repo REPO] [--branch BRANCH] [--port PORT]
     
     引用额外的 Secrets:
     python deploy_koyeb.py --secret-ref ANOTHER_SECRET
+    
+    列出所有服务:
+    python deploy_koyeb.py --list
 """
 
 from __future__ import annotations
@@ -34,6 +39,24 @@ def load_env() -> dict[str, str]:
     env = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}
     env.update(os.environ)
     return {k: v for k, v in env.items() if v is not None}
+
+
+def normalize_service_name(service_name: str) -> str:
+    """规范化服务名称：Koyeb 服务名称只能包含小写字母、数字和连字符，不能以下划线开头或结尾"""
+    import re
+    # 将下划线替换为连字符，并转换为小写
+    normalized = service_name.replace("_", "-").lower()
+    # 移除开头和结尾的连字符
+    normalized = normalized.strip("-")
+    # 确保只包含小写字母、数字和连字符
+    normalized = re.sub(r'[^a-z0-9-]', '', normalized)
+    return normalized
+
+
+def is_service_name_normalized(service_name: str) -> bool:
+    """检查服务名称是否已经规范化"""
+    normalized = normalize_service_name(service_name)
+    return service_name == normalized
 
 
 def get_or_create_secret(
@@ -489,11 +512,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Koyeb 应用名称 (默认: ai-builders，已硬编码)",
     )
     parser.add_argument(
-        "--service-name",
-        required=False,
-        help="Koyeb 服务名称 (部署时必需，使用 --list 时不需要)",
-    )
-    parser.add_argument(
         "--branch",
         default="master",
         help="Git 分支 (默认: master)",
@@ -534,27 +552,31 @@ def main(argv: list[str] | None = None) -> int:
     # 硬编码 app 名称为 ai-builders
     app_name = "ai-builders"
     
+    # 从 .env 文件读取服务名称
+    service_name = env.get("SERVICE_NAME")
+    
     # 服务名称必须提供（除非使用 --list）
-    if not args.service_name:
-        print("错误: --service-name 是必需的（除非使用 --list）")
-        return 1
-    
-    # 验证并规范化服务名称：Koyeb 服务名称只能包含小写字母、数字和连字符，不能以下划线开头或结尾
-    service_name = args.service_name
-    # 将下划线替换为连字符，并移除无效字符
-    service_name = service_name.replace("_", "-").lower()
-    # 移除开头和结尾的连字符
-    service_name = service_name.strip("-")
-    # 确保只包含小写字母、数字和连字符
-    import re
-    service_name = re.sub(r'[^a-z0-9-]', '', service_name)
-    
-    if service_name != args.service_name:
-        print(f"⚠️  服务名称已规范化: {args.service_name} -> {service_name}")
-    
     if not service_name:
-        print("错误: 服务名称无效")
+        print("错误: 服务名称未设置")
+        print("请在 .env 文件中设置 SERVICE_NAME=<name>")
         return 1
+    
+    # 检查服务名称是否已经规范化
+    if not is_service_name_normalized(service_name):
+        normalized_name = normalize_service_name(service_name)
+        print(f"❌ 错误: 服务名称未规范化")
+        print(f"   当前值: {service_name}")
+        print(f"   规范化后: {normalized_name}")
+        print()
+        print("Koyeb 服务名称要求：")
+        print("  - 只能包含小写字母、数字和连字符 (-)")
+        print("  - 不能以下划线 (_) 开头或结尾")
+        print("  - 不能包含其他特殊字符")
+        print()
+        print("请修改 .env 文件中的 SERVICE_NAME，使用规范化后的名称。")
+        return 1
+    
+    print(f"✓ 服务名称已规范化: {service_name}")
 
     # 解析 Secret 引用，默认包含 OPENAI_API_KEY
     secret_refs = args.secret_ref or []
