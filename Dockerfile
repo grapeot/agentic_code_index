@@ -27,6 +27,13 @@ RUN if [ -f package.json ]; then \
       ls -la dist/ && \
       if [ -f dist/index.html ]; then \
         echo "✅ index.html found"; \
+        echo "Checking index.html content for base path..." && \
+        echo "First 10 lines of index.html:" && \
+        head -10 dist/index.html && \
+        echo "---" && \
+        echo "Checking for asset paths:" && \
+        grep -o 'href="[^"]*"' dist/index.html | head -3 || echo "No href found" && \
+        grep -o 'src="[^"]*"' dist/index.html | head -3 || echo "No src found"; \
       else \
         echo "❌ ERROR: index.html not found after build!"; \
         exit 1; \
