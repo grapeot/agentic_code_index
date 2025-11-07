@@ -1,6 +1,6 @@
-# Code Indexing Agent MVP
+# Code Indexing Agent
 
-这是一个用于验证 Agentic 代码索引系统技术可行性的最小可行产品（MVP）。
+一个基于 LLM Agent 的智能代码索引与查询系统，支持通过自然语言与代码库进行深度对话。
 
 ## 演示视频
 
@@ -8,10 +8,13 @@
 
 ## 功能特性
 
-- ✅ Agent 多轮工具调用（cat, ls, find）
-- ✅ OpenAI GPT-5-mini 模型支持
-- ✅ Pydantic 结构化输出强制
-- ✅ FastAPI 服务接口
+- ✅ **双层索引结构**: 文件索引和函数索引分离，支持从宏观到微观的多层次代码探索
+- ✅ **语义搜索**: 基于 FAISS 向量索引的语义搜索，支持文件和函数级别的精确查询
+- ✅ **LLM 驱动的代码解析**: 使用 LLM 识别函数边界，灵活处理各种代码结构
+- ✅ **Agent 多轮工具调用**: 智能 Agent 通过多轮迭代探索代码库，自主调整查询策略
+- ✅ **结构化输出**: 利用 OpenAI 结构化输出功能，保证 Agent 输出的可靠性和类型安全
+- ✅ **FastAPI 服务接口**: 提供完整的 RESTful API，支持索引和查询操作
+- ✅ **React 前端界面**: 提供直观的 Web 界面，支持代码浏览和交互式查询
 
 ## 关键设计决策
 
@@ -36,8 +39,6 @@ source .venv/bin/activate
 
 # 安装依赖
 uv pip install -r requirements.txt
-# 或者如果网络有问题，可以尝试：
-# pip install fastapi uvicorn openai pydantic python-dotenv
 ```
 
 ## 环境变量
@@ -50,48 +51,153 @@ export OPENAI_API_KEY="your-api-key-here"
 
 ## 运行服务
 
+### 后端服务
+
 ```bash
 # 激活虚拟环境
 source .venv/bin/activate
 
-# 启动 FastAPI 服务（使用 8001 端口，因为 8000 被占用）
+# 启动 FastAPI 服务（使用 8001 端口）
 python -m uvicorn main:app --port 8001 --reload
+```
+
+或者使用启动脚本：
+
+```bash
+./launch_backend.sh
 ```
 
 服务将在 `http://localhost:8001` 启动。
 
+### 前端界面
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+前端将在 `http://localhost:5173` 启动。
+
 ## API 使用
 
-### 查询端点
+### 1. 索引代码库
+
+首先需要为代码库创建索引：
+
+```bash
+curl -X POST http://localhost:8001/index \
+  -H "Content-Type: application/json" \
+  -d '{
+    "codebase_path": ".",
+    "output_dir": "self_index"
+  }'
+```
+
+**响应示例**:
+```json
+{
+  "status": "success",
+  "total_files": 25,
+  "total_chunks": 156,
+  "file_chunks": 25,
+  "function_chunks": 131,
+  "output_dir": "self_index"
+}
+```
+
+### 2. 查询代码库
+
+使用自然语言查询代码库：
 
 ```bash
 curl -X POST http://localhost:8001/query \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "列出当前目录下的所有 Python 文件",
+    "question": "项目中处理用户认证的逻辑在哪里？",
     "model": "gpt-5-mini",
     "max_iterations": 6
   }'
 ```
 
-### 响应格式
-
+**响应示例**:
 ```json
 {
-  "answer": "根据查询结果，当前目录下有以下 Python 文件：...",
+  "answer": "根据代码库的搜索结果，用户认证逻辑主要位于以下位置：\n\n1. `src/auth/service.py` - 包含 `authenticate_user` 函数，负责验证用户凭据...",
   "confidence": "high",
-  "sources": ["main.py", "agent.py", "tools.py"],
-  "reasoning": "使用了 ls 和 find 工具来查找文件"
+  "sources": [
+    "src/auth/service.py",
+    "src/auth/middleware.py"
+  ],
+  "reasoning": "通过语义搜索在函数索引中找到了相关的认证函数，然后查看了完整的文件内容以确认实现细节"
 }
+```
+
+### 3. 其他端点
+
+- `GET /` - 获取服务信息和可用端点
+- `GET /health` - 健康检查
+- `GET /files` - 列出所有已索引的文件
+- `GET /file?file_path=xxx` - 获取指定文件的内容
+- `GET /file-tree` - 获取文件系统目录结构
+
+## 使用示例
+
+### 示例 1: 查找特定功能的实现
+
+```bash
+curl -X POST http://localhost:8001/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "如何实现代码索引功能？",
+    "model": "gpt-5-mini",
+    "max_iterations": 6
+  }'
+```
+
+### 示例 2: 查找特定函数
+
+```bash
+curl -X POST http://localhost:8001/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "search_codebase 函数的具体实现是什么？",
+    "model": "gpt-5-mini",
+    "max_iterations": 6
+  }'
+```
+
+### 示例 3: 了解项目结构
+
+```bash
+curl -X POST http://localhost:8001/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "这个项目的主要模块有哪些？",
+    "model": "gpt-5-mini",
+    "max_iterations": 6
+  }'
 ```
 
 ## 测试
 
-运行基础测试：
+运行测试套件：
 
 ```bash
+# 激活虚拟环境
 source .venv/bin/activate
+
+# 运行基础测试
 python tests/test_mvp.py
+
+# 运行索引测试
+python tests/test_index.py
+
+# 运行查询测试
+python tests/test_query.py
+
+# 运行综合测试
+python tests/test_comprehensive.py
 ```
 
 ## 项目结构
@@ -103,17 +209,28 @@ python tests/test_mvp.py
 │   ├── agent.py         # Agent 核心逻辑
 │   ├── indexing.py      # 代码索引服务
 │   ├── search.py        # 代码搜索服务
-│   ├── tools.py         # 工具函数（cat, ls, find）
+│   ├── tools.py         # Agent 工具函数（语义搜索、文件查看等）
 │   └── models.py        # Pydantic 数据模型
 ├── frontend/            # React 前端应用
 │   ├── src/             # 前端源代码
+│   │   ├── App.jsx      # 主应用组件
+│   │   └── components/  # UI 组件
+│   │       ├── ChatPanel.jsx    # 聊天面板
+│   │       ├── CodeViewer.jsx   # 代码查看器
+│   │       └── FileTree.jsx     # 文件树
 │   └── ...
 ├── tests/               # 测试脚本目录
 │   ├── test_mvp.py      # MVP 测试脚本
 │   ├── test_index.py    # 索引测试脚本
-│   └── ...
+│   ├── test_query.py    # 查询测试脚本
+│   └── test_comprehensive.py  # 综合测试
 ├── self_index/          # 示例索引数据
+│   ├── file_index.faiss      # 文件级别向量索引
+│   ├── function_index.faiss  # 函数级别向量索引
+│   └── metadata.json          # 索引元数据
 ├── docs/                # 文档
+│   ├── design.md        # 设计文档
+│   └── screenshot.mp4   # 演示视频
 ├── requirements.txt     # Python 依赖列表
 ├── launch_backend.sh    # 后端启动脚本
 └── README.md            # 本文件
@@ -121,17 +238,30 @@ python tests/test_mvp.py
 
 ## 核心流程
 
+### 索引流程
+
+1. **遍历文件**: 递归遍历代码库中的所有支持的源文件（.py, .js, .ts, .go 等）
+2. **结构解析**: 使用 LLM 识别每个文件中的函数边界（函数名、起始行、结束行）
+3. **数据分块**: 创建文件级别和函数级别的代码块
+4. **向量化**: 使用 OpenAI text-embedding-3-small 生成 embedding 向量
+5. **构建索引**: 使用 FAISS IndexFlatL2 构建向量索引并保存
+
+### 查询流程
+
 1. **接收查询**: Agent 接收用户的自然语言问题
-2. **多轮迭代**: Agent 可以调用工具（cat, ls, find）最多 N 轮
+2. **多轮迭代**: Agent 可以调用工具（语义搜索、文件查看）最多 N 轮
+   - **语义搜索**: 在文件索引或函数索引中搜索相关代码
+   - **文件查看**: 查看完整文件内容以获取更多上下文
 3. **工具执行**: 系统执行工具并返回结果给 Agent
 4. **强制总结**: 最后一轮不再提供工具，Agent 必须给出最终答案
-5. **结构化输出**: 最终答案必须符合 Pydantic FinalAnswer 模型
+5. **结构化输出**: 最终答案必须符合 Pydantic FinalAnswer 模型，包含答案、置信度、来源和推理过程
 
-## 下一步
+## 技术栈
 
-完成 MVP 验证后，将实现完整功能：
-- FAISS 向量索引（文件索引和函数索引）
-- 代码结构解析（LLM 驱动的函数识别）
-- 语义搜索工具
-- 完整的索引服务
+- **后端**: Python, FastAPI, OpenAI API, FAISS, Pydantic
+- **前端**: React, Vite
+- **AI 模型**: OpenAI GPT-5-mini (推理), text-embedding-3-small (向量化)
 
+## 许可证
+
+MIT License
