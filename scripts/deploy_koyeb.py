@@ -130,6 +130,14 @@ def deploy(
             }
         ]
     
+    # 计算前端基础路径（用于子路径部署）
+    # 从路由配置中提取路径，如果没有路由或路径是根路径，则使用服务名称
+    base_path = f"/{service_name}"  # 默认使用服务名称作为基础路径
+    if routes_config and len(routes_config) > 0:
+        route_path = routes_config[0].get("path", "")
+        if route_path and route_path != "/":
+            base_path = route_path
+    
     print(f"部署配置:")
     print(f"  仓库: {repo}")
     print(f"  应用名: {app_name}")
@@ -137,6 +145,7 @@ def deploy(
     print(f"  分支: {branch}")
     print(f"  端口: {port}")
     print(f"  构建方式: Docker (Dockerfile)")
+    print(f"  前端基础路径: {base_path}")
     print(f"  路由配置: {json.dumps(routes_config, indent=2, ensure_ascii=False)}")
     if secret_refs:
         print(f"  引用 Secrets: {', '.join(secret_refs)}")
@@ -218,7 +227,7 @@ def deploy(
             # Koyeb 使用 @SECRET_NAME 格式引用 secrets
             for secret_name in secret_refs:
                 env_config.append({"key": secret_name, "value": f"@{secret_name}"})
-
+        
         # 构建路由配置（如果没有提供，则使用默认路由：/<service_name> -> port）
         routes_config = routes
         if routes_config is None:
@@ -229,6 +238,19 @@ def deploy(
                     "path": f"/{service_name}"
                 }
             ]
+        
+        # 计算前端基础路径（用于子路径部署）
+        # 从路由配置中提取路径，如果没有路由或路径是根路径，则使用服务名称
+        base_path = f"/{service_name}"  # 默认使用服务名称作为基础路径
+        if routes_config and len(routes_config) > 0:
+            route_path = routes_config[0].get("path", "")
+            if route_path and route_path != "/":
+                base_path = route_path
+        
+        # 添加 BASE_PATH 到环境变量（用于 Docker 构建）
+        # 注意：Koyeb 的环境变量在构建时可能不可用，所以我们需要通过 ARG 传递
+        # 但我们可以先尝试通过环境变量传递，如果不行，再考虑其他方法
+        env_config.append({"key": "BASE_PATH", "value": base_path})
 
         if not service_id:
             print(f"创建服务: {service_name}...")

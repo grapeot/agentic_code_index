@@ -85,6 +85,10 @@ your-project/
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// 获取基础路径：支持子路径部署
+// 通过环境变量 VITE_BASE_PATH 或 BASE_PATH 设置
+const basePath = process.env.VITE_BASE_PATH || process.env.BASE_PATH || ''
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -99,16 +103,19 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    // 生产环境使用相对路径，便于后端服务
-    base: './'
+    // 支持子路径部署：通过环境变量设置基础路径
+    // 如果未设置，使用相对路径 './'（适用于根路径部署）
+    // 如果设置了，例如 BASE_PATH=/test-service，则使用 '/test-service/'
+    base: basePath ? `${basePath}/` : './'
   }
 })
 ```
 
-**为什么需要 `base: './'`？**
-- 默认情况下，Vite 构建使用绝对路径（`/assets/...`）
-- 在生产环境中，如果应用部署在子路径下，绝对路径会导致资源加载失败
-- 使用相对路径（`./assets/...`）可以确保资源在任何路径下都能正确加载
+**基础路径配置说明：**
+- **根路径部署**：不设置 `BASE_PATH`，使用相对路径 `./`，适用于部署在根路径的应用
+- **子路径部署**：设置 `BASE_PATH=/your-path`，使用绝对路径 `/your-path/`，适用于部署在子路径的应用（如 Koyeb 的 `/<service-name>` 路由）
+- 部署脚本会自动计算并设置 `BASE_PATH` 环境变量（基于服务名称或路由配置）
+- 如果环境变量在构建时不可用，Dockerfile 会尝试通过 ARG 传递 `BASE_PATH`
 
 #### Create React App 配置
 
@@ -374,10 +381,17 @@ python scripts/deploy_koyeb.py --list
 - 创建或更新 Koyeb 应用和服务（app 名称硬编码为 `ai-builders`）
 - 配置 Git 仓库连接（格式：`github.com/<org>/<repo>`）
 - **自动配置 Docker 构建**：在 `git` 对象内添加 `docker` 字段，使用 Dockerfile
-- 设置环境变量和 Secrets
+- **自动配置子路径部署**：计算前端基础路径（`BASE_PATH`），基于服务名称或路由配置
+- 设置环境变量和 Secrets（包括 `BASE_PATH` 环境变量）
 - 使用 nano 实例类型和 na 区域（可配置）
 - **自动配置路由**：`/<service-name>` -> `PORT`
 - **自动规范化服务名称**：将下划线转换为连字符，转小写
+
+**子路径部署说明：**
+- Koyeb 默认将服务部署在 `/<service-name>` 路径下
+- 部署脚本会自动计算 `BASE_PATH=/<service-name>` 并设置为环境变量
+- Dockerfile 会在构建时读取 `BASE_PATH` 环境变量，传递给 Vite 构建
+- 如果 `BASE_PATH` 在构建时不可用，会使用相对路径 `./`（可能导致子路径部署时资源加载失败）
 
 ### 部署脚本参数
 
