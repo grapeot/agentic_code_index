@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import FileTree from './components/FileTree'
 import CodeViewer from './components/CodeViewer'
 import ChatPanel from './components/ChatPanel'
+import { apiFetch } from './utils/api'
 import './App.css'
 
 function App() {
@@ -11,14 +12,7 @@ function App() {
   const [fileTree, setFileTree] = useState([])
 
   useEffect(() => {
-    // Load file tree
-    fetch('/api/')
-      .then(res => res.json())
-      .then(data => {
-        // For now, we'll need to implement a file tree endpoint
-        // Or load from index metadata
-      })
-      .catch(err => console.error('Failed to load file tree:', err))
+    // Load file tree (not used, FileTree component handles it)
   }, [])
 
   const handleFileSelect = async (filePath) => {
@@ -27,7 +21,7 @@ function App() {
     
     try {
       // Load file directly from filesystem via API
-      const response = await fetch(`/api/file?file_path=${encodeURIComponent(filePath)}`)
+      const response = await apiFetch(`file?file_path=${encodeURIComponent(filePath)}`)
       if (response.ok) {
         const data = await response.json()
         setFileContent(data.content || '')

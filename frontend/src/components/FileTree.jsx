@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
+import { apiFetch } from '../utils/api'
 import './FileTree.css'
 
 function FileTree({ onFileSelect, selectedFile }) {
@@ -15,7 +16,7 @@ function FileTree({ onFileSelect, selectedFile }) {
   const loadFileTree = async () => {
     try {
       // Get real filesystem tree from backend
-      const response = await fetch('/api/file-tree')
+      const response = await apiFetch('file-tree')
       
       // Check if response is OK
       if (!response.ok) {

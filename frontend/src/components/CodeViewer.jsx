@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism'
 import axios from 'axios'
+import { apiUrl } from '../utils/api'
 import './CodeViewer.css'
 
 function CodeViewer({ filePath, content, highlightedLines }) {
@@ -53,7 +54,7 @@ function CodeViewer({ filePath, content, highlightedLines }) {
     setLoading(true)
     try {
       // Load file directly from filesystem via API
-      const response = await axios.get(`/api/file`, {
+      const response = await axios.get(apiUrl('file'), {
         params: { file_path: path }
       })
       if (response.data && response.data.content) {

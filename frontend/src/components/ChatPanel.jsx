@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
+import { apiUrl } from '../utils/api'
 import './ChatPanel.css'
 
 function ChatPanel({ onCodeReference }) {
@@ -68,7 +69,7 @@ function ChatPanel({ onCodeReference }) {
     setLoading(true)
 
     try {
-      const response = await axios.post('/api/query', {
+      const response = await axios.post(apiUrl('query'), {
         question: input,
         max_iterations: 6
       })
