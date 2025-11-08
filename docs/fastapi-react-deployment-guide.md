@@ -306,7 +306,7 @@ OPENAI_API_KEY=your_openai_api_key
 - `SERVICE_NAME` 必须是规范化的名称，部署脚本会检查，未规范化则停止部署
 - 服务名称会自动用于：
   - Koyeb 服务名称
-  - 路由配置：`/` -> `PORT`（根路径映射，使用 reverse proxy + 独立域名）
+  - 路由配置：`/<service-name>` -> `PORT`
 - 其他环境变量：通过 Koyeb Secrets 配置（如 API keys、数据库连接等）
 - **重要**：所有在部署脚本中引用的 Secrets 必须在 Koyeb 控制台创建（访问 https://app.koyeb.com/secrets），否则部署会失败
 - **部署方式**：使用 reverse proxy + 独立域名，前后端不需要 base path 支持
@@ -336,13 +336,13 @@ python scripts/deploy_koyeb.py --list
   - 例如：`OPENAI_API_KEY={{ secret.OPENAI_API_KEY }}`
   - 脚本会在部署前验证 Secret 是否存在，**如果 Secret 不存在，部署会失败并提示创建**
 - 使用 nano 实例类型和 na 区域（可配置）
-- **自动配置路由**：`/` -> `PORT`（根路径映射，使用 reverse proxy + 独立域名）
+- **自动配置路由**：`/${SERVICE_NAME}` -> `PORT`
 
 **部署流程：**
 1. 部署脚本从 `.env` 读取 `SERVICE_NAME`（例如：`code-index`）
 2. Koyeb 构建 Docker 镜像，使用 Dockerfile
 3. Dockerfile 构建前端（使用相对路径 `base: './'`）
-4. Koyeb 路由配置：`/` -> `PORT`（根路径映射）
+4. Koyeb 路由配置：`/code-index` -> `PORT`
 5. 使用 reverse proxy + 独立域名访问，前后端不需要 base path 支持
 
 ### 部署脚本参数
@@ -364,9 +364,9 @@ python scripts/deploy_koyeb.py \
   - 例如：`test-service` ✅，`test_service` ❌，`-test-service` ❌
 - 如果服务名称未规范化，脚本会停止并提示修改 `.env` 文件
 - `--app-name`：已硬编码为 `ai-builders`，无需指定
-- **自动路由配置**：脚本会自动创建路由 `/` -> `PORT`（根路径映射）
-  - 例如：如果端口是 `8001`，会自动配置路由 `/` -> `8001`
-  - 使用 reverse proxy + 独立域名，不需要子路径
+- **自动路由配置**：脚本会自动创建路由 `/${SERVICE_NAME}` -> `PORT`
+  - 例如：如果 `SERVICE_NAME=my-service`，端口是 `8001`
+  - 会自动配置路由 `/my-service` -> `8001`
 - **Secret 配置**：
   - 脚本默认会自动引用 `OPENAI_API_KEY` Secret（**必须存在**）
   - 如果需要引用其他 Secrets，使用 `--secret-ref` 参数
