@@ -1,13 +1,12 @@
 """FastAPI server for the code indexing agent."""
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from contextlib import asynccontextmanager
 import os
 import logging
-import re
 from pathlib import Path
 
 from src.agent import Agent
@@ -240,47 +239,16 @@ if frontend_dist.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     
     @app.get("/")
-    async def serve_frontend_root(request: Request):
+    async def serve_frontend_root():
         """Serve frontend index.html for root path."""
         index_file = frontend_dist / "index.html"
-        
         if index_file.exists():
-            # Read HTML content
-            html_content = index_file.read_text(encoding='utf-8')
-            
-            # Try to get base path from various sources
-            base_path = ""
-            
-            # 1. Check X-Forwarded-Path header (Koyeb might set this)
-            forwarded_path = request.headers.get("X-Forwarded-Path") or request.headers.get("X-Original-Path")
-            if forwarded_path:
-                base_path = forwarded_path.rstrip('/')
-            
-            # 2. Check request URL host/path (might contain service name)
-            if not base_path:
-                host = request.headers.get("Host", "")
-                if "koyeb.app" in host:
-                    env_base_path = os.getenv("BASE_PATH", "")
-                    if env_base_path:
-                        base_path = env_base_path.rstrip('/')
-            
-            # 3. If still no base_path, check if request path is not root
-            if not base_path:
-                request_path = request.url.path.rstrip('/')
-                if request_path and request_path != '/':
-                    base_path = request_path
-            
-            if base_path:
-                # Replace absolute paths with base path
-                html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
-                html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
-            
-            return HTMLResponse(content=html_content)
+            return FileResponse(index_file)
         else:
             raise HTTPException(status_code=404, detail="Frontend not found")
     
     @app.get("/{path:path}")
-    async def serve_frontend(path: str, request: Request):
+    async def serve_frontend(path: str):
         """Serve frontend files, fallback to index.html for SPA routing."""
         # Skip API routes and docs
         if path.startswith(("api/", "docs", "openapi.json")):
@@ -293,40 +261,8 @@ if frontend_dist.exists():
         
         # For SPA routing, return index.html
         index_file = frontend_dist / "index.html"
-        
         if index_file.exists():
-            # Read HTML content
-            html_content = index_file.read_text(encoding='utf-8')
-            
-            # Try to get base path from various sources
-            base_path = ""
-            
-            # 1. Check X-Forwarded-Path header (Koyeb might set this)
-            forwarded_path = request.headers.get("X-Forwarded-Path") or request.headers.get("X-Original-Path")
-            if forwarded_path:
-                base_path = forwarded_path.rstrip('/')
-            
-            # 2. Check BASE_PATH env var (set by deploy script)
-            if not base_path:
-                env_base_path = os.getenv("BASE_PATH", "")
-                if env_base_path:
-                    base_path = env_base_path.rstrip('/')
-            
-            # 3. Check request URL path
-            if not base_path:
-                request_path = request.url.path.rstrip('/')
-                if request_path and request_path != '/' and not request_path.startswith(('/api', '/docs', '/openapi.json', '/assets')):
-                    # Check if this looks like a service path
-                    path_parts = [p for p in request_path.split('/') if p]
-                    if len(path_parts) == 1 and not path_parts[0].endswith(('.html', '.js', '.css', '.png', '.jpg', '.svg')):
-                        base_path = request_path
-            
-            if base_path:
-                # Replace absolute paths with base path
-                html_content = re.sub(r'href="/assets/', f'href="{base_path}/assets/', html_content)
-                html_content = re.sub(r'src="/assets/', f'src="{base_path}/assets/', html_content)
-            
-            return HTMLResponse(content=html_content)
+            return FileResponse(index_file)
         
         raise HTTPException(status_code=404, detail=f"File not found: {path}")
 else:

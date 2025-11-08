@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react'
 import FileTree from './components/FileTree'
 import CodeViewer from './components/CodeViewer'
 import ChatPanel from './components/ChatPanel'
-import { apiFetch } from './utils/api'
 import './App.css'
 
 function App() {
@@ -21,7 +20,7 @@ function App() {
     
     try {
       // Load file directly from filesystem via API
-      const response = await apiFetch(`file?file_path=${encodeURIComponent(filePath)}`)
+      const response = await fetch(`/api/file?file_path=${encodeURIComponent(filePath)}`)
       if (response.ok) {
         const data = await response.json()
         setFileContent(data.content || '')

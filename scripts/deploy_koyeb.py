@@ -60,65 +60,13 @@ def is_service_name_normalized(service_name: str) -> bool:
 
 
 def check_path_consistency(service_name: str) -> tuple[bool, str]:
-    """检查 .env、vite.config.js 和 api.js 中的路径配置是否一致
+    """检查配置一致性（已简化，不再需要检查 base path）
     
     Returns:
         (is_consistent, error_message)
     """
-    import re
-    
-    # 从 .env 计算期望的路径
-    expected_path = f"/{service_name}"
-    
-    # 读取 vite.config.js
-    vite_config_path = ROOT / "frontend" / "vite.config.js"
-    vite_path = None
-    if vite_config_path.exists():
-        try:
-            content = vite_config_path.read_text(encoding='utf-8')
-            # 查找 HARDCODED_BASE_PATH = '/xxx'
-            match = re.search(r"HARDCODED_BASE_PATH\s*=\s*['\"]([^'\"]+)['\"]", content)
-            if match:
-                vite_path = match.group(1)
-        except Exception as e:
-            return False, f"无法读取 vite.config.js: {e}"
-    else:
-        return False, f"vite.config.js 不存在: {vite_config_path}"
-    
-    # 读取 api.js
-    api_js_path = ROOT / "frontend" / "src" / "utils" / "api.js"
-    api_path = None
-    if api_js_path.exists():
-        try:
-            content = api_js_path.read_text(encoding='utf-8')
-            # 查找 HARDCODED_BASE_PATH = '/xxx'
-            match = re.search(r"HARDCODED_BASE_PATH\s*=\s*['\"]([^'\"]+)['\"]", content)
-            if match:
-                api_path = match.group(1)
-        except Exception as e:
-            return False, f"无法读取 api.js: {e}"
-    else:
-        return False, f"api.js 不存在: {api_js_path}"
-    
-    # 检查一致性
-    errors = []
-    if vite_path != expected_path:
-        errors.append(f"vite.config.js 中的 HARDCODED_BASE_PATH='{vite_path}' 与 SERVICE_NAME='{service_name}' 不一致（期望: '{expected_path}'）")
-    if api_path != expected_path:
-        errors.append(f"api.js 中的 HARDCODED_BASE_PATH='{api_path}' 与 SERVICE_NAME='{service_name}' 不一致（期望: '{expected_path}'）")
-    if vite_path != api_path:
-        errors.append(f"vite.config.js 和 api.js 中的 HARDCODED_BASE_PATH 不一致（vite: '{vite_path}', api: '{api_path}'）")
-    
-    if errors:
-        error_msg = "路径配置不一致:\n"
-        for error in errors:
-            error_msg += f"  - {error}\n"
-        error_msg += f"\n请确保以下配置一致:\n"
-        error_msg += f"  - .env 中的 SERVICE_NAME={service_name}\n"
-        error_msg += f"  - vite.config.js 中的 HARDCODED_BASE_PATH='{expected_path}'\n"
-        error_msg += f"  - api.js 中的 HARDCODED_BASE_PATH='{expected_path}'"
-        return False, error_msg
-    
+    # 使用 reverse proxy + 独立域名，不再需要 base path 配置
+    # 此函数保留用于未来可能的其他检查
     return True, ""
 
 
@@ -216,14 +164,6 @@ def deploy(
             }
         ]
     
-    # 计算前端基础路径（用于子路径部署）
-    # 从路由配置中提取路径，如果没有路由或路径是根路径，则使用服务名称
-    base_path = f"/{service_name}"  # 默认使用服务名称作为基础路径
-    if routes_config and len(routes_config) > 0:
-        route_path = routes_config[0].get("path", "")
-        if route_path and route_path != "/":
-            base_path = route_path
-    
     print(f"部署配置:")
     print(f"  仓库: {repo}")
     print(f"  应用名: {app_name}")
@@ -231,8 +171,8 @@ def deploy(
     print(f"  分支: {branch}")
     print(f"  端口: {port}")
     print(f"  构建方式: Docker (Dockerfile)")
-    print(f"  前端基础路径: {base_path}")
     print(f"  路由配置: {json.dumps(routes_config, indent=2, ensure_ascii=False)}")
+    print(f"  注意: 使用 reverse proxy + 独立域名，前后端不需要 base path 支持")
     if secret_refs:
         print(f"  引用 Secrets: {', '.join(secret_refs)}")
     print()
@@ -333,13 +273,8 @@ def deploy(
                 print(f"   3. 输入 Secret 名称和值")
                 return False
         
-        # 注意：routes_config 和 base_path 已经在函数开头计算过了（第 145-162 行）
-        # 这里直接使用之前计算的值，不需要重新计算
-        
-        # 添加 BASE_PATH 和 SERVICE_NAME 到环境变量（用于 Docker 构建和运行时）
-        # SERVICE_NAME 用于 Vite 构建时设置 base path（但前端已硬编码，此变量主要用于后端）
-        # BASE_PATH 用于运行时环境变量（后端 main.py 会使用此变量处理子路径请求）
-        env_config.append({"key": "BASE_PATH", "value": base_path})
+        # 添加 SERVICE_NAME 到环境变量（如果需要的话，可以用于其他用途）
+        # 注意：前后端不再需要 BASE_PATH，因为使用 reverse proxy + 独立域名
         env_config.append({"key": "SERVICE_NAME", "value": service_name})
 
         if not service_id:
@@ -666,17 +601,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     
     print(f"✓ 服务名称已规范化: {service_name}")
-    
-    # 检查路径配置一致性
-    is_consistent, error_msg = check_path_consistency(service_name)
-    if not is_consistent:
-        print(f"❌ 错误: {error_msg}")
-        return 1
-    
-    print(f"✓ 路径配置一致性检查通过:")
-    print(f"  - .env SERVICE_NAME: {service_name}")
-    print(f"  - vite.config.js HARDCODED_BASE_PATH: /{service_name}")
-    print(f"  - api.js HARDCODED_BASE_PATH: /{service_name}")
+    print(f"✓ 使用 reverse proxy + 独立域名，前后端不需要 base path 配置")
 
     # 解析 Secret 引用，默认包含 OPENAI_API_KEY
     secret_refs = args.secret_ref or []
