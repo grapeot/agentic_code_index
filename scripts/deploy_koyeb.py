@@ -153,14 +153,15 @@ def deploy(
     routes: list[dict] | None = None,
 ) -> bool:
     """使用 Koyeb REST API 部署"""
-    # 构建路由配置（如果没有提供，则使用默认路由：/<service_name> -> port）
+    # 构建路由配置（如果没有提供，则使用默认路由：/ -> port）
+    # 使用 reverse proxy + 独立域名，直接映射到根路径
     routes_config = routes
     if routes_config is None:
-        # 默认路由：/<service_name> -> port
+        # 默认路由：/ -> port（根路径映射）
         routes_config = [
             {
                 "port": port,
-                "path": f"/{service_name}"
+                "path": "/"
             }
         ]
     
