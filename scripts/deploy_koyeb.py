@@ -288,10 +288,7 @@ def deploy(
                         "repository": git_repo_url,
                         "branch": branch,
                         "docker": {
-                            "dockerfile": "Dockerfile",
-                            "build_args": {
-                                "SERVICE_NAME": service_name
-                            }
+                            "dockerfile": "Dockerfile"
                         }
                     },
                     "ports": [
@@ -351,10 +348,7 @@ def deploy(
                         "repository": git_repo_url,
                         "branch": branch,
                         "docker": {
-                            "dockerfile": "Dockerfile",
-                            "build_args": {
-                                "SERVICE_NAME": service_name
-                            }
+                            "dockerfile": "Dockerfile"
                         }
                     },
                     "ports": [

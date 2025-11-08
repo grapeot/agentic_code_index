@@ -1,12 +1,6 @@
 # 多阶段构建：先构建前端
 FROM node:18-slim AS frontend-builder
 
-# 接受构建参数：SERVICE_NAME（用于计算 base path）
-# Koyeb 的环境变量在构建时可能不可用，所以同时支持 ARG 和环境变量
-ARG SERVICE_NAME
-# 如果 ARG 未设置，尝试从环境变量读取（Koyeb 可能通过环境变量传递）
-ENV SERVICE_NAME=${SERVICE_NAME}
-
 WORKDIR /app/frontend
 
 # 复制前端 package.json（如果存在）
@@ -22,10 +16,9 @@ RUN if [ -f package.json ]; then \
 # 复制前端文件
 COPY frontend/ .
 
-# 构建前端
-# SERVICE_NAME 通过 ARG 或环境变量传递，用于设置 Vite 的 base path
+# 构建前端（使用相对路径 base: './'，不需要 base path 支持）
 RUN if [ -f package.json ]; then \
-      SERVICE_NAME=${SERVICE_NAME:-$SERVICE_NAME} npm run build; \
+      npm run build; \
       if [ ! -f dist/index.html ]; then \
         echo "❌ ERROR: index.html not found after build!"; \
         exit 1; \

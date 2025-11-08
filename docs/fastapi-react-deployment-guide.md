@@ -64,37 +64,6 @@ your-project/
 ```javascript
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
-
-// 读取 .env 文件（从项目根目录）
-function loadEnvFromRoot() {
-  try {
-    const envPath = resolve(__dirname, '../.env')
-    const envContent = readFileSync(envPath, 'utf-8')
-    const env = {}
-    for (const line of envContent.split('\n')) {
-      const trimmed = line.trim()
-      if (trimmed && !trimmed.startsWith('#')) {
-        const [key, ...valueParts] = trimmed.split('=')
-        if (key && valueParts.length > 0) {
-          env[key.trim()] = valueParts.join('=').trim().replace(/^["']|["']$/g, '')
-        }
-      }
-    }
-    return env
-  } catch (error) {
-    return {}
-  }
-}
-
-// 从环境变量或 .env 文件中的 SERVICE_NAME 计算基础路径
-// 优先级：构建时环境变量 > .env 文件
-// 硬编码部署路径（如果已知）
-const HARDCODED_BASE_PATH = '/code-index'  // 部署路径，如果已知可以硬编码
-
-const serviceName = process.env.SERVICE_NAME || loadEnvFromRoot().SERVICE_NAME || ''
-const basePath = HARDCODED_BASE_PATH || (serviceName ? `/${serviceName}` : '')
 
 export default defineConfig({
   plugins: [react()],
@@ -110,22 +79,16 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    // 从硬编码路径或 SERVICE_NAME 计算基础路径
-    // 根路径部署：base = './'
-    // 子路径部署：base = '/service-name/'
-    base: basePath ? `${basePath}/` : './'
+    // 生产环境使用相对路径，这样前端可以直接调用后端 API
+    base: './'
   }
 })
 ```
 
-**基础路径配置说明：**
-- **硬编码路径（推荐）**：如果部署路径已知，可以直接硬编码 `HARDCODED_BASE_PATH`，避免环境变量配置问题
-- **动态路径**：如果未设置硬编码路径，会从 `SERVICE_NAME` 环境变量或 `.env` 文件计算
-- **根路径部署**：如果未设置任何路径，使用相对路径 `./`，适用于部署在根路径的应用
-- **子路径部署**：设置 `HARDCODED_BASE_PATH='/your-service-name'` 或 `SERVICE_NAME=your-service-name`，会自动计算基础路径为 `/your-service-name/`
-- **优先级**：硬编码路径 > 构建时环境变量 > `.env` 文件
-- **服务名称要求**：`SERVICE_NAME` 必须是规范化的名称（小写字母、数字、连字符，不能以下划线开头或结尾）
-- **配置一致性**：部署脚本会自动检查 `.env`、`vite.config.js` 和 `api.js` 中的路径配置是否一致
+**配置说明：**
+- **开发环境**：使用 Vite proxy 将 `/api` 请求代理到后端 `http://localhost:8001`
+- **生产环境**：使用相对路径 `./`，前后端部署在同一域名下，直接使用 `/api` 前缀访问后端
+- **部署方式**：使用 reverse proxy + 独立域名，前后端不需要 base path 支持
 
 #### Create React App 配置
 
@@ -205,58 +168,28 @@ if frontend_dist.exists():
 
 ### 3. 前端代码修改
 
-#### 创建 API 工具函数 (`frontend/src/utils/api.js`)
+#### 在组件中直接使用 `/api` 前缀
 
-**重要**：在子路径部署时，API 请求必须包含 base path。创建工具函数统一处理：
-
-```javascript
-// frontend/src/utils/api.js
-// API utility for making requests that work with base path
-// When deployed at /service-name, API calls should go to /service-name/api/...
-
-// Get base path from Vite's import.meta.env.BASE_URL
-// BASE_URL is set by Vite based on the base config (e.g., '/service-name/')
-// 硬编码部署路径（如果已知）
-const HARDCODED_BASE_PATH = '/code-index'  // 部署路径，如果已知可以硬编码
-const BASE_URL = HARDCODED_BASE_PATH ? `${HARDCODED_BASE_PATH}/` : (import.meta.env.BASE_URL || '/')
-
-// Helper function to build API URL
-export function apiUrl(path) {
-  // Remove leading slash if present
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path
-  // Ensure path starts with 'api/'
-  const apiPath = cleanPath.startsWith('api/') ? cleanPath : `api/${cleanPath}`
-  // Combine base URL with API path
-  // BASE_URL already ends with '/', so we don't need to add another one
-  return `${BASE_URL}${apiPath}`
-}
-
-// Wrapper for fetch that uses apiUrl
-export async function apiFetch(path, options) {
-  return fetch(apiUrl(path), options)
-}
-```
-
-#### 在组件中使用 API 工具函数
-
-**不要直接使用 `/api/...`，而是使用工具函数：**
+**直接使用 `/api/...` 路径访问后端 API：**
 
 ```javascript
-// ❌ 错误：硬编码路径，子路径部署时会失败
+// ✅ 正确：直接使用 /api 前缀
 const response = await fetch('/api/your-endpoint')
-
-// ✅ 正确：使用工具函数
-import { apiFetch, apiUrl } from '../utils/api'
-
-// 使用 fetch
-const response = await apiFetch('your-endpoint')
 
 // 使用 axios
 import axios from 'axios'
-const response = await axios.get(apiUrl('your-endpoint'))
+const response = await axios.get('/api/your-endpoint')
+
+// 带参数
+const response = await axios.post('/api/query', {
+  question: 'your question'
+})
 ```
 
-**注意**：工具函数自动处理子路径部署的 base path，使用 `/api` 前缀便于开发代理和路由区分。
+**注意**：
+- 开发环境：Vite proxy 会自动将 `/api` 请求代理到后端
+- 生产环境：前后端部署在同一域名下，直接使用 `/api` 前缀访问后端
+- 使用 reverse proxy + 独立域名，不需要 base path 支持
 
 ### 4. Dockerfile 配置
 
@@ -265,10 +198,6 @@ const response = await axios.get(apiUrl('your-endpoint'))
 ```dockerfile
 # 多阶段构建：先构建前端
 FROM node:18-slim AS frontend-builder
-
-# 接受构建参数：SERVICE_NAME（用于计算 base path）
-# 这个参数会在构建时通过环境变量传递（Koyeb 会自动传递）
-ARG SERVICE_NAME
 
 WORKDIR /app/frontend
 
@@ -286,13 +215,13 @@ RUN if [ -f package.json ]; then \
 COPY frontend/ .
 
 # 构建前端
-# SERVICE_NAME 通过 ARG 传递，用于设置 Vite 的 base path
 RUN if [ -f package.json ]; then \
-      echo "Building frontend with SERVICE_NAME=${SERVICE_NAME:-}" && \
-      SERVICE_NAME=${SERVICE_NAME:-} npm run build && \
-      echo "Build completed"; \
+      npm run build; \
+      if [ ! -f dist/index.html ]; then \
+        echo "❌ ERROR: index.html not found after build!"; \
+        exit 1; \
+      fi; \
     else \
-      echo "No package.json found, skipping build"; \
       mkdir -p dist && echo "<html><body>Frontend not built</body></html>" > dist/index.html; \
     fi
 
@@ -317,8 +246,6 @@ CMD sh -c "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"
 ```
 
 **关键点：**
-- `ARG SERVICE_NAME`：声明构建参数，用于传递服务名称
-- `SERVICE_NAME=${SERVICE_NAME:-} npm run build`：在构建时传递环境变量给 npm
 - 多阶段构建可以减小镜像大小，最终镜像不包含 Node.js
 - **⚠️ 重要**：CMD 中必须使用 `--host 0.0.0.0`，不能使用 `127.0.0.1` 或 `localhost`
 
@@ -380,9 +307,9 @@ OPENAI_API_KEY=your_openai_api_key
 - 服务名称会自动用于：
   - Koyeb 服务名称
   - 路由配置：`/<service-name>` -> `PORT`
-  - 前端基础路径：`/${SERVICE_NAME}`
 - 其他环境变量：通过 Koyeb Secrets 配置（如 API keys、数据库连接等）
 - **重要**：所有在部署脚本中引用的 Secrets 必须在 Koyeb 控制台创建（访问 https://app.koyeb.com/secrets），否则部署会失败
+- **部署方式**：使用 reverse proxy + 独立域名，前后端不需要 base path 支持
 
 ### 部署脚本（可选）
 
@@ -399,13 +326,11 @@ python scripts/deploy_koyeb.py --list
 脚本会自动：
 - 从 `.env` 文件读取 `SERVICE_NAME`（**必需**，如果未设置会报错）
 - **检查服务名称是否规范化**：如果未规范化，会停止部署并提示修改 `.env` 文件
-- **检查路径配置一致性**：验证 `.env`、`vite.config.js` 和 `api.js` 中的路径配置是否一致，不一致会停止部署
 - 创建或更新 Koyeb 应用和服务（app 名称硬编码为 `ai-builders`）
 - 配置 Git 仓库连接（格式：`github.com/<org>/<repo>`）
 - **自动配置 Docker 构建**：在 `git` 对象内添加 `docker` 字段，使用 Dockerfile
 - **设置环境变量**：
-  - `BASE_PATH=/${SERVICE_NAME}`：运行时环境变量，用于后端处理子路径
-  - `SERVICE_NAME=${SERVICE_NAME}`：构建时环境变量，用于 Vite 构建时设置 base path（如果未硬编码）
+  - `SERVICE_NAME=${SERVICE_NAME}`：运行时环境变量（可用于其他用途）
 - **配置 Secrets 引用**：
   - 使用 Koyeb 插值语法 `{{ secret.SECRET_NAME }}` 引用 Secrets
   - 例如：`OPENAI_API_KEY={{ secret.OPENAI_API_KEY }}`
@@ -413,24 +338,12 @@ python scripts/deploy_koyeb.py --list
 - 使用 nano 实例类型和 na 区域（可配置）
 - **自动配置路由**：`/${SERVICE_NAME}` -> `PORT`
 
-**子路径部署流程（硬编码路径方式）：**
+**部署流程：**
 1. 部署脚本从 `.env` 读取 `SERVICE_NAME`（例如：`code-index`）
-2. **配置一致性检查**：验证 `vite.config.js` 和 `api.js` 中的 `HARDCODED_BASE_PATH` 是否与 `SERVICE_NAME` 一致
-3. 设置环境变量 `SERVICE_NAME=code-index` 和 `BASE_PATH=/code-index`
-4. Koyeb 构建 Docker 镜像时，`SERVICE_NAME` 环境变量传递给 Dockerfile
-5. Dockerfile 的 `ARG SERVICE_NAME` 接收环境变量
-6. 构建前端时，`vite.config.js` 使用硬编码的 `HARDCODED_BASE_PATH='/code-index'` 设置 `base: '/code-index/'`
-7. Vite 构建时，`import.meta.env.BASE_URL` 被设置为 `/code-index/`
-8. 前端代码使用 `api.js` 中硬编码的 `HARDCODED_BASE_PATH='/code-index'`，构建 API URL：`/code-index/api/...`
-9. Koyeb 路由配置：`/code-index` -> `PORT`
-10. 后端运行时读取 `BASE_PATH` 环境变量，处理子路径请求
-
-**注意**：如果使用硬编码路径，需要确保以下三个地方的路径一致：
-- `.env` 中的 `SERVICE_NAME=code-index`
-- `vite.config.js` 中的 `HARDCODED_BASE_PATH = '/code-index'`
-- `api.js` 中的 `HARDCODED_BASE_PATH = '/code-index'`
-
-部署脚本会自动检查这些配置的一致性，不一致时会停止部署并提示修改。
+2. Koyeb 构建 Docker 镜像，使用 Dockerfile
+3. Dockerfile 构建前端（使用相对路径 `base: './'`）
+4. Koyeb 路由配置：`/code-index` -> `PORT`
+5. 使用 reverse proxy + 独立域名访问，前后端不需要 base path 支持
 
 ### 部署脚本参数
 
@@ -450,11 +363,6 @@ python scripts/deploy_koyeb.py \
   - 不能以连字符开头或结尾
   - 例如：`test-service` ✅，`test_service` ❌，`-test-service` ❌
 - 如果服务名称未规范化，脚本会停止并提示修改 `.env` 文件
-- **路径配置一致性检查**：脚本会自动检查以下配置是否一致：
-  - `.env` 中的 `SERVICE_NAME`
-  - `vite.config.js` 中的 `HARDCODED_BASE_PATH`
-  - `api.js` 中的 `HARDCODED_BASE_PATH`
-  - 如果配置不一致，脚本会停止部署并显示详细的错误信息，提示需要修改的地方
 - `--app-name`：已硬编码为 `ai-builders`，无需指定
 - **自动路由配置**：脚本会自动创建路由 `/${SERVICE_NAME}` -> `PORT`
   - 例如：如果 `SERVICE_NAME=my-service`，端口是 `8001`
@@ -466,6 +374,7 @@ python scripts/deploy_koyeb.py \
   - **重要**：脚本会在部署前验证所有必需的 Secrets 是否存在，如果任何 Secret 不存在，部署会立即失败并显示错误信息，提示在 Koyeb 控制台创建缺失的 Secrets
   - 部署前请确保所有必需的 Secrets 已在 Koyeb 控制台创建（访问 https://app.koyeb.com/secrets）
 - 使用 `--list` 选项可以查看所有应用和服务，不需要设置 `SERVICE_NAME`
+- **部署方式**：使用 reverse proxy + 独立域名，前后端不需要 base path 配置
 
 ## 本地测试步骤
 
@@ -545,7 +454,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 **解决方法**：
 1. 检查浏览器控制台是否有错误
 2. 确认 `frontend/dist` 目录存在且包含文件
-3. 检查 `vite.config.js` 中的 `base: './'` 配置
+3. 检查 `vite.config.js` 中的 `base: './'` 配置（应该使用相对路径）
 4. 检查 `main.py` 中的静态文件挂载路径是否正确
 
 ### 问题 2: API 调用失败
@@ -734,7 +643,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ## 注意事项
 
 - **性能**：静态文件由 FastAPI 服务，对于中小型应用足够，如需更高性能可考虑 Nginx 反向代理
-- **路径配置**：确保前端构建时使用正确的 base path，硬编码路径需要保持一致性
+- **部署方式**：使用 reverse proxy + 独立域名，前后端不需要 base path 支持，简化了配置
 - **环境变量**：生产环境使用环境变量管理配置
 - **项目特定配置**：文档中的示例需要根据实际项目结构调整
 
